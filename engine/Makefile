@@ -6,6 +6,7 @@ LDFLAGS := $(shell pkg-config --libs libdpdk) \
 
 SRCS := main.c \
         graph.c \
+        node_out.c \
         worker.c \
         stats.c \
         ipc.c \
@@ -14,8 +15,6 @@ SRCS := main.c \
         modules/ip_filter.c \
         modules/vlan_filter.c \
         modules/port_filter.c \
-        modules/duplicator.c \
-        modules/load_balancer.c \
         modules/pcap_recorder.c \
         modules/counter.c \
         modules/template.c

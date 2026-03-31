@@ -14,8 +14,6 @@ module_ops_t *module_registry[] = {
     [MOD_IP_FILTER]     = &ip_filter_ops,
     [MOD_VLAN_FILTER]   = &vlan_filter_ops,
     [MOD_PORT_FILTER]   = &port_filter_ops,
-    [MOD_DUPLICATOR]    = &duplicator_ops,
-    [MOD_LOAD_BALANCER] = &load_balancer_ops,
     [MOD_PCAP_RECORDER] = &pcap_recorder_ops,
     [MOD_COUNTER]       = &counter_ops,
     [MOD_TEMPLATE]      = &template_ops,
@@ -27,13 +25,23 @@ module_type_t module_type_from_string(const char *s) {
     if (!strcmp(s, "ip_filter"))     return MOD_IP_FILTER;
     if (!strcmp(s, "vlan_filter"))   return MOD_VLAN_FILTER;
     if (!strcmp(s, "port_filter"))   return MOD_PORT_FILTER;
-    if (!strcmp(s, "duplicator"))    return MOD_DUPLICATOR;
-    if (!strcmp(s, "load_balancer")) return MOD_LOAD_BALANCER;
     if (!strcmp(s, "pcap_recorder")) return MOD_PCAP_RECORDER;
     if (!strcmp(s, "counter"))       return MOD_COUNTER;
     if (!strcmp(s, "template"))      return MOD_TEMPLATE;
     fprintf(stderr, "Unknown module type: %s\n", s);
     return MOD_TEMPLATE;
+}
+
+static output_mode_t parse_output_mode(const char *s) {
+    if (!s)                          return OUT_FIRST;
+    if (!strcmp(s, "duplicate"))     return OUT_DUPLICATE;
+    if (!strcmp(s, "load_balance"))  return OUT_LOAD_BALANCE;
+    return OUT_FIRST;
+}
+
+static lb_mode_t parse_lb_mode(const char *s) {
+    if (s && !strcmp(s, "rss"))      return LB_RSS;
+    return LB_ROUND_ROBIN;
 }
 
 int parse_graph(const char *path, pipeline_t *pipeline) {
@@ -64,21 +72,29 @@ int parse_graph(const char *path, pipeline_t *pipeline) {
         node_desc_t *n = &pipeline->nodes[i];
         n->node_idx = (int)i;
 
-        const char *id = json_string_value(json_object_get(jnode, "id"));
+        const char *id     = json_string_value(json_object_get(jnode, "id"));
         const char *type_s = json_string_value(json_object_get(jnode, "type"));
-        const char *label = json_string_value(json_object_get(jnode, "label"));
+        const char *label  = json_string_value(json_object_get(jnode, "label"));
 
         if (!id || !type_s) { fprintf(stderr, "Node %zu missing id or type\n", i); continue; }
 
-        strncpy(n->id, id, MAX_ID_LEN - 1);
+        strncpy(n->id,    id,               MAX_ID_LEN - 1);
         strncpy(n->label, label ? label : id, MAX_LABEL_LEN - 1);
         n->type = module_type_from_string(type_s);
 
         json_t *core_j = json_object_get(jnode, "core");
         n->core_id = core_j ? (int)json_integer_value(core_j) : 1;
 
-        /* Parse module-specific config */
+        /* Parse output_mode and lb_mode from node config */
         json_t *cfg_j = json_object_get(jnode, "config");
+        if (cfg_j) {
+            const char *om = json_string_value(json_object_get(cfg_j, "output_mode"));
+            const char *lm = json_string_value(json_object_get(cfg_j, "lb_mode"));
+            n->output_mode = parse_output_mode(om);
+            n->lb_mode     = parse_lb_mode(lm);
+        }
+
+        /* Parse module-specific config */
         if (cfg_j && module_registry[n->type]->parse_config) {
             n->module_cfg = module_registry[n->type]->parse_config(cfg_j);
             if (!n->module_cfg) {
@@ -112,9 +128,9 @@ int parse_graph(const char *path, pipeline_t *pipeline) {
         if (!src_id || !tgt_id) { fprintf(stderr, "Edge %zu missing source/target\n", i); continue; }
 
         /* Ring metadata */
-        json_t *ring_j = json_object_get(jedge, "ring");
+        json_t *ring_j    = json_object_get(jedge, "ring");
         const char *ring_name = ring_j ? json_string_value(json_object_get(ring_j, "name")) : NULL;
-        uint32_t ring_size = ring_j ? (uint32_t)json_integer_value(json_object_get(ring_j, "size")) : 1024;
+        uint32_t ring_size    = ring_j ? (uint32_t)json_integer_value(json_object_get(ring_j, "size")) : 1024;
         if (!ring_name) {
             snprintf(e->name, MAX_RING_NAME, "ring_%s_%d_%s_%d", src_id, src_port, tgt_id, tgt_port);
         } else {
@@ -122,9 +138,7 @@ int parse_graph(const char *path, pipeline_t *pipeline) {
         }
         e->size = ring_size;
 
-        /* Create the rte_ring — use a short index-based name because
-           rte_ring_create() enforces RTE_RING_NAMESIZE (32 chars) max.
-           e->name is kept for stats/display; the rte internal name is ring_%d. */
+        /* Create the rte_ring with a short index-based name (32-char limit) */
         char rte_name[32];
         snprintf(rte_name, sizeof(rte_name), "ring_%d", (int)i);
         e->ring = rte_ring_create(rte_name, e->size, SOCKET_ID_ANY, RING_F_SC_DEQ | RING_F_SP_ENQ);
@@ -135,7 +149,7 @@ int parse_graph(const char *path, pipeline_t *pipeline) {
             return -1;
         }
 
-        /* Wire source node output */
+        /* Wire source node output and target node input */
         for (int j = 0; j < pipeline->n_nodes; j++) {
             node_desc_t *n = &pipeline->nodes[j];
             if (!strcmp(n->id, src_id)) {

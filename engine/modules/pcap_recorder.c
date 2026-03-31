@@ -1,4 +1,5 @@
 #include "module_base.h"
+#include "../node_out.h"
 #include <rte_mbuf.h>
 #include <stdlib.h>
 #include <string.h>
@@ -97,6 +98,7 @@ static int pcap_process(node_desc_t *node) {
     clock_gettime(CLOCK_REALTIME, &ts);
     uint64_t bytes = 0;
     unsigned processed = 0;
+    struct rte_mbuf *pass[BURST_SIZE];
 
     for (unsigned i = 0; i < n; i++) {
         uint32_t pkt_len = pkts[i]->pkt_len;
@@ -128,18 +130,13 @@ static int pcap_process(node_desc_t *node) {
             c->pkt_count++;
         }
 
-        /* Pass packet onwards if output is connected */
         bytes += pkt_len;
-        if (node->output_rings[0] && node->output_rings[0]->ring) {
-            if (rte_ring_enqueue(node->output_rings[0]->ring, pkts[i]) < 0) {
-                rte_pktmbuf_free(pkts[i]);
-                atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
-                continue;
-            }
-        } else {
-            rte_pktmbuf_free(pkts[i]);
-        }
-        processed++;
+        pass[processed++] = pkts[i];
+    }
+
+    if (processed > 0) {
+        unsigned fwd = node_out(node, pass, processed);
+        (void)fwd; /* all counted as processed regardless of downstream */
     }
 
     atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);

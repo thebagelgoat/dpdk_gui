@@ -1,5 +1,5 @@
 from __future__ import annotations
-from models.graph_schema import GraphSchema, GraphBody, HEAVY_TYPES
+from models.graph_schema import GraphSchema, GraphBody
 
 
 def validate_graph(graph: GraphSchema) -> list[str]:
@@ -31,17 +31,6 @@ def validate_graph(graph: GraphSchema) -> list[str]:
             errors.append(f"Node '{edge.target}' is a nic_rx and cannot have inputs")
         if edge.source in tx_ids:
             errors.append(f"Node '{edge.source}' is a nic_tx and cannot have outputs")
-
-    # Check output_count matches actual edge count for duplicator/load_balancer
-    for node in g.nodes:
-        if node.type in ("duplicator", "load_balancer"):
-            declared = node.config.get("output_count", 2)
-            actual = sum(1 for e in g.edges if e.source == node.id)
-            if actual != declared:
-                errors.append(
-                    f"Node '{node.id}' declares output_count={declared} "
-                    f"but has {actual} output edge(s)"
-                )
 
     # Check ring name uniqueness
     ring_names: dict[str, str] = {}

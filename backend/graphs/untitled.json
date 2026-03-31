@@ -1,0 +1,81 @@
+{
+  "version": "1",
+  "name": "untitled",
+  "graph": {
+    "nodes": [
+      {
+        "id": "node_1774986843423_0",
+        "type": "nic_rx",
+        "label": "NIC RX",
+        "core": 1,
+        "config": {
+          "port_id": 0,
+          "queue_id": 0,
+          "burst_size": 32
+        },
+        "position": {
+          "x": -222.47199999999992,
+          "y": -9.687999999999988
+        }
+      },
+      {
+        "id": "node_1774986846804_1",
+        "type": "ip_filter",
+        "label": "IP Filter",
+        "core": 1,
+        "config": {
+          "rules": [
+            {
+              "src_cidr": "192.168.1.53/32",
+              "dst_cidr": "0.0.0.0/0",
+              "action": "pass"
+            }
+          ],
+          "default_action": "drop"
+        },
+        "position": {
+          "x": 85.07200000000017,
+          "y": -24.679999999999964
+        }
+      },
+      {
+        "id": "node_1774986946529_5",
+        "type": "nic_tx",
+        "label": "NIC TX",
+        "core": 1,
+        "config": {
+          "port_id": 1,
+          "queue_id": 0
+        },
+        "position": {
+          "x": 674.5244800000002,
+          "y": -57.17567999999983
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_1774986852601_2",
+        "source": "node_1774986843423_0",
+        "source_port": 0,
+        "target": "node_1774986846804_1",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774986843423_0_0_node_1774986846804_1_0",
+          "size": 1024
+        }
+      },
+      {
+        "id": "edge_1774986951716_6",
+        "source": "node_1774986846804_1",
+        "source_port": 0,
+        "target": "node_1774986946529_5",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774986846804_1_0_node_1774986946529_5_0",
+          "size": 1024
+        }
+      }
+    ]
+  }
+}

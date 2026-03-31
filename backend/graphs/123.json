@@ -1,0 +1,56 @@
+{
+  "version": "1",
+  "name": "123",
+  "graph": {
+    "nodes": [
+      {
+        "id": "node_1774984333360_0",
+        "type": "nic_rx",
+        "label": "NIC RX",
+        "core": 1,
+        "config": {
+          "port_id": 0,
+          "queue_id": 0,
+          "burst_size": 32
+        },
+        "position": {
+          "x": -220.0,
+          "y": 42.5
+        }
+      },
+      {
+        "id": "node_1774984995802_0",
+        "type": "ip_filter",
+        "label": "IP Filter",
+        "core": 1,
+        "config": {
+          "rules": [
+            {
+              "src_cidr": "192.168.1.53/32",
+              "dst_cidr": "0.0.0.0/0",
+              "action": "pass"
+            }
+          ],
+          "default_action": "drop"
+        },
+        "position": {
+          "x": 43.00000000000006,
+          "y": 112.0
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_1774985001462_1",
+        "source": "node_1774984333360_0",
+        "source_port": 0,
+        "target": "node_1774984995802_0",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774984333360_0_0_node_1774984995802_0_0",
+          "size": 1024
+        }
+      }
+    ]
+  }
+}

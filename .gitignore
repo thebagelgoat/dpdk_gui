@@ -16,3 +16,6 @@ frontend/dist/
 # Runtime
 /tmp/dpdk_engine.sock
 *.log
+
+# Claude local settings
+.claude/

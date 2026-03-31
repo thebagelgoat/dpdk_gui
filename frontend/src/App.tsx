@@ -26,6 +26,17 @@ export default function App() {
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0f1117; }
         ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        @keyframes dashdraw {
+          from { stroke-dashoffset: 12; }
+          to   { stroke-dashoffset: 0; }
+        }
+        .react-flow__handle {
+          transition: width 0.15s ease, height 0.15s ease !important;
+        }
+        .react-flow__handle:hover {
+          width: 18px !important;
+          height: 18px !important;
+        }
       `}</style>
 
       <Toolbar />

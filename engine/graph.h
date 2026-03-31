@@ -20,12 +20,22 @@ typedef enum {
     MOD_IP_FILTER,
     MOD_VLAN_FILTER,
     MOD_PORT_FILTER,
-    MOD_DUPLICATOR,
-    MOD_LOAD_BALANCER,
     MOD_PCAP_RECORDER,
     MOD_COUNTER,
     MOD_TEMPLATE
 } module_type_t;
+
+/* How a node distributes packets across its output rings */
+typedef enum {
+    OUT_FIRST       = 0,  /* default: send to output_rings[0] only */
+    OUT_DUPLICATE   = 1,  /* clone packet to every connected output ring */
+    OUT_LOAD_BALANCE= 2,  /* distribute across outputs (RSS hash or round-robin) */
+} output_mode_t;
+
+typedef enum {
+    LB_ROUND_ROBIN = 0,
+    LB_RSS         = 1,
+} lb_mode_t;
 
 /* Per-edge ring descriptor */
 typedef struct {
@@ -48,6 +58,11 @@ typedef struct node_desc {
     int             n_outputs;
     ring_desc_t    *input_rings[MAX_OUTPUTS];
     ring_desc_t    *output_rings[MAX_OUTPUTS];
+
+    /* output distribution mode */
+    output_mode_t   output_mode;
+    lb_mode_t       lb_mode;
+    uint32_t        lb_rr_counter;  /* round-robin state */
 
     /* module-specific config (heap allocated) */
     void           *module_cfg;

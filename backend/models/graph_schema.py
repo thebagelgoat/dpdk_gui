@@ -22,12 +22,12 @@ class Position(BaseModel):
 
 ModuleType = Literal[
     "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter",
-    "duplicator", "load_balancer", "pcap_recorder", "counter", "template",
+    "pcap_recorder", "counter", "template",
 ]
 
 HEAVY_TYPES = {
     "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter",
-    "duplicator", "load_balancer", "pcap_recorder",
+    "pcap_recorder",
 }
 LIGHTWEIGHT_TYPES = {"counter", "template"}
 

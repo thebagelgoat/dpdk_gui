@@ -13,6 +13,7 @@
  */
 
 #include "module_base.h"
+#include "../node_out.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -55,17 +56,13 @@ static int template_process(node_desc_t *node) {
     uint64_t bytes = 0;
     unsigned processed = 0;
 
-    for (unsigned i = 0; i < n; i++) {
-        bytes += pkts[i]->pkt_len;
+    for (unsigned i = 0; i < n; i++) bytes += pkts[i]->pkt_len;
 
-        if (c->pass_through && node->output_rings[0] && node->output_rings[0]->ring) {
-            if (rte_ring_enqueue(node->output_rings[0]->ring, pkts[i]) == 0) {
-                processed++;
-                continue;
-            }
-        }
-        rte_pktmbuf_free(pkts[i]);
-        atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
+    if (c->pass_through) {
+        processed = node_out(node, pkts, n);
+    } else {
+        for (unsigned i = 0; i < n; i++) rte_pktmbuf_free(pkts[i]);
+        processed = n;
     }
 
     atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);

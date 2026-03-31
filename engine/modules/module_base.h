@@ -13,6 +13,9 @@
  * parse_config() — called on the main thread at startup to convert a jansson
  *                  object into a heap-allocated module_cfg struct.
  *                  The pipeline stores the pointer in node->module_cfg.
+ *
+ * Multi-output behaviour (duplicate / load_balance) is handled generically
+ * by node_out() in node_out.c — modules do not need to know about it.
  */
 
 #include <jansson.h>
@@ -38,8 +41,6 @@ extern module_ops_t nic_tx_ops;
 extern module_ops_t ip_filter_ops;
 extern module_ops_t vlan_filter_ops;
 extern module_ops_t port_filter_ops;
-extern module_ops_t duplicator_ops;
-extern module_ops_t load_balancer_ops;
 extern module_ops_t pcap_recorder_ops;
 extern module_ops_t counter_ops;
 extern module_ops_t template_ops;

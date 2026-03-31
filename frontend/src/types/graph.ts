@@ -1,7 +1,6 @@
 export type ModuleType =
   | "nic_rx" | "nic_tx"
   | "ip_filter" | "vlan_filter" | "port_filter"
-  | "duplicator" | "load_balancer"
   | "pcap_recorder" | "counter" | "template";
 
 export interface RingConfig {
@@ -59,9 +58,9 @@ export const MODULE_DEFS: ModuleDefinition[] = [
     label: "NIC RX",
     description: "Receive packets from a NIC port",
     color: "#2563eb",
-    defaultConfig: { port_id: 0, queue_id: 0, burst_size: 32 },
+    defaultConfig: { port_id: 0, queue_id: 0, burst_size: 32, output_mode: "first" },
     maxInputs: 0,
-    maxOutputs: 1,
+    maxOutputs: 4,
   },
   {
     type: "nic_tx",
@@ -80,43 +79,26 @@ export const MODULE_DEFS: ModuleDefinition[] = [
     defaultConfig: {
       rules: [{ src_cidr: "0.0.0.0/0", dst_cidr: "0.0.0.0/0", action: "pass" }],
       default_action: "drop",
+      output_mode: "first",
     },
     maxInputs: 1,
-    maxOutputs: 1,
+    maxOutputs: 4,
   },
   {
     type: "vlan_filter",
     label: "VLAN Filter",
     description: "Filter packets by VLAN ID",
     color: "#d97706",
-    defaultConfig: { vlan_ids: [100], action: "pass", strip_tag: false },
+    defaultConfig: { vlan_ids: [100], action: "pass", strip_tag: false, output_mode: "first" },
     maxInputs: 1,
-    maxOutputs: 1,
+    maxOutputs: 4,
   },
   {
     type: "port_filter",
     label: "Port Filter",
     description: "Filter packets by TCP/UDP port",
     color: "#d97706",
-    defaultConfig: { protocol: "both", ports: [80, 443], action: "pass" },
-    maxInputs: 1,
-    maxOutputs: 1,
-  },
-  {
-    type: "duplicator",
-    label: "Duplicator",
-    description: "Clone packets to multiple outputs",
-    color: "#059669",
-    defaultConfig: { output_count: 2 },
-    maxInputs: 1,
-    maxOutputs: 4,
-  },
-  {
-    type: "load_balancer",
-    label: "Load Balancer",
-    description: "Distribute packets across outputs",
-    color: "#059669",
-    defaultConfig: { mode: "rss", output_count: 2 },
+    defaultConfig: { protocol: "both", ports: [80, 443], action: "pass", output_mode: "first" },
     maxInputs: 1,
     maxOutputs: 4,
   },
@@ -125,26 +107,26 @@ export const MODULE_DEFS: ModuleDefinition[] = [
     label: "PCAP Recorder",
     description: "Capture packets to a .pcap file",
     color: "#dc2626",
-    defaultConfig: { output_path: "/tmp/capture.pcap", max_file_size_mb: 512, snaplen: 65535 },
+    defaultConfig: { output_path: "/tmp/capture.pcap", max_file_size_mb: 512, snaplen: 65535, output_mode: "first" },
     maxInputs: 1,
-    maxOutputs: 1,
+    maxOutputs: 4,
   },
   {
     type: "counter",
     label: "Counter",
     description: "Count packets and bytes",
     color: "#6b7280",
-    defaultConfig: { label: "counter", reset_on_read: false },
+    defaultConfig: { label: "counter", reset_on_read: false, output_mode: "first" },
     maxInputs: 1,
-    maxOutputs: 1,
+    maxOutputs: 4,
   },
   {
     type: "template",
     label: "Template",
     description: "Custom module template",
     color: "#374151",
-    defaultConfig: { user_label: "custom", pass_through: true },
+    defaultConfig: { user_label: "custom", pass_through: true, output_mode: "first" },
     maxInputs: 1,
-    maxOutputs: 1,
+    maxOutputs: 4,
   },
 ];

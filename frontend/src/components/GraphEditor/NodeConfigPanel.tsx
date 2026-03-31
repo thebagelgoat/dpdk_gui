@@ -2,29 +2,193 @@ import React, { useState, useEffect } from "react";
 import { useGraphStore } from "../../store/graphStore";
 import { useUIStore } from "../../store/uiStore";
 
+// ─── Field schema ───────────────────────────────────────────────────────────
+
+type FieldDef =
+  | { type: "number"; key: string; label: string; min?: number; max?: number; step?: number }
+  | { type: "select"; key: string; label: string; options: string[] }
+  | { type: "toggle"; key: string; label: string }
+  | { type: "text";   key: string; label: string; placeholder?: string }
+  | { type: "number-list"; key: string; label: string; min?: number; max?: number }
+  | { type: "ip-rules"; key: string; label: string };
+
+// Appended to any node that has maxOutputs > 1
+const OUTPUT_MODE_FIELDS: FieldDef[] = [
+  { type: "select", key: "output_mode", label: "Output Mode",
+    options: ["first", "duplicate", "load_balance"] },
+  { type: "select", key: "lb_mode", label: "LB Mode (if load_balance)",
+    options: ["round_robin", "rss"] },
+];
+
+const CONFIG_SCHEMA: Record<string, FieldDef[]> = {
+  nic_rx: [
+    { type: "number", key: "port_id",    label: "Port ID",    min: 0, max: 7 },
+    { type: "number", key: "queue_id",   label: "Queue ID",   min: 0, max: 15 },
+    { type: "number", key: "burst_size", label: "Burst Size", min: 1, max: 256, step: 8 },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  nic_tx: [
+    { type: "number", key: "port_id",  label: "Port ID",  min: 0, max: 7 },
+    { type: "number", key: "queue_id", label: "Queue ID", min: 0, max: 15 },
+  ],
+  ip_filter: [
+    { type: "ip-rules", key: "rules",          label: "Rules" },
+    { type: "select",   key: "default_action", label: "Default Action", options: ["pass", "drop"] },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  vlan_filter: [
+    { type: "number-list", key: "vlan_ids",   label: "VLAN IDs (comma-separated)", min: 0, max: 4094 },
+    { type: "select",      key: "action",     label: "Action",    options: ["pass", "drop"] },
+    { type: "toggle",      key: "strip_tag",  label: "Strip VLAN tag" },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  port_filter: [
+    { type: "select",      key: "protocol", label: "Protocol", options: ["tcp", "udp", "both"] },
+    { type: "number-list", key: "ports",    label: "Ports (comma-separated)", min: 1, max: 65535 },
+    { type: "select",      key: "action",   label: "Action",   options: ["pass", "drop"] },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  pcap_recorder: [
+    { type: "text",   key: "output_path",      label: "Output Path", placeholder: "/tmp/capture.pcap" },
+    { type: "number", key: "max_file_size_mb", label: "Max File Size (MB)", min: 0, max: 65536 },
+    { type: "number", key: "snaplen",          label: "Snap Length",         min: 64, max: 65535 },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  counter: [
+    { type: "text",   key: "label",         label: "Counter Label", placeholder: "counter" },
+    { type: "toggle", key: "reset_on_read", label: "Reset on read" },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  template: [
+    { type: "text",   key: "user_label",   label: "Label",       placeholder: "custom" },
+    { type: "toggle", key: "pass_through", label: "Pass-through" },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+};
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function IpRuleEditor({
+  rules,
+  onChange,
+}: {
+  rules: { src_cidr: string; dst_cidr: string; action: string }[];
+  onChange: (r: typeof rules) => void;
+}) {
+  const update = (idx: number, key: string, val: string) => {
+    const next = rules.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
+    onChange(next);
+  };
+  const add = () => onChange([...rules, { src_cidr: "0.0.0.0/0", dst_cidr: "0.0.0.0/0", action: "pass" }]);
+  const remove = (idx: number) => onChange(rules.filter((_, i) => i !== idx));
+
+  return (
+    <div>
+      {rules.map((r, i) => (
+        <div
+          key={i}
+          style={{
+            background: "#131620",
+            border: "1px solid #2d3748",
+            borderRadius: 4,
+            padding: "6px 8px",
+            marginBottom: 6,
+          }}
+        >
+          <div style={{ display: "flex", gap: 4, marginBottom: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#475569", width: 28 }}>Src</span>
+            <input
+              value={r.src_cidr}
+              onChange={(e) => update(i, "src_cidr", e.target.value)}
+              placeholder="0.0.0.0/0"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 4, marginBottom: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#475569", width: 28 }}>Dst</span>
+            <input
+              value={r.dst_cidr}
+              onChange={(e) => update(i, "dst_cidr", e.target.value)}
+              placeholder="0.0.0.0/0"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <span style={{ fontSize: 10, color: "#475569", width: 28 }}>Act</span>
+            <select
+              value={r.action}
+              onChange={(e) => update(i, "action", e.target.value)}
+              style={{ ...inputStyle, flex: 1 }}
+            >
+              <option value="pass">pass</option>
+              <option value="drop">drop</option>
+            </select>
+            <button
+              onClick={() => remove(i)}
+              style={{ background: "#3f1c1c", border: "1px solid #7f1d1d", borderRadius: 3, color: "#f87171", cursor: "pointer", padding: "2px 7px", fontSize: 12 }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      ))}
+      <button onClick={add} style={{ ...btnSecondary, width: "100%" }}>
+        + Add Rule
+      </button>
+    </div>
+  );
+}
+
+// ─── Main panel ──────────────────────────────────────────────────────────────
+
 export default function NodeConfigPanel() {
   const { selectedNodeId, setSelectedNode } = useUIStore();
   const { nodes, updateNodeConfig, updateNodeLabel } = useGraphStore();
 
   const node = nodes.find((n) => n.id === selectedNodeId);
-  const [configText, setConfigText] = useState("");
+  const moduleType = node?.data.moduleType as string;
+  const schema = CONFIG_SCHEMA[moduleType] ?? [];
+
+  const [fields, setFields] = useState<Record<string, unknown>>({});
   const [label, setLabel] = useState("");
+  const [showRaw, setShowRaw] = useState(false);
+  const [rawText, setRawText] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (node) {
-      setConfigText(JSON.stringify(node.data.config, null, 2));
+      const cfg = (node.data.config ?? {}) as Record<string, unknown>;
+      setFields(cfg);
       setLabel(node.data.label as string);
+      setRawText(JSON.stringify(cfg, null, 2));
       setError("");
     }
   }, [selectedNodeId, node]);
 
   if (!node) return null;
 
+  const setField = (key: string, value: unknown) => {
+    setFields((prev) => {
+      const next = { ...prev, [key]: value };
+      setRawText(JSON.stringify(next, null, 2));
+      return next;
+    });
+  };
+
+  const handleRawChange = (text: string) => {
+    setRawText(text);
+    try {
+      setFields(JSON.parse(text));
+      setError("");
+    } catch {
+      setError("Invalid JSON");
+    }
+  };
+
   const handleApply = () => {
     try {
-      const parsed = JSON.parse(configText);
-      updateNodeConfig(node.id, parsed);
+      const cfg = showRaw ? JSON.parse(rawText) : fields;
+      updateNodeConfig(node.id, cfg);
       updateNodeLabel(node.id, label);
       setError("");
     } catch (e) {
@@ -32,11 +196,92 @@ export default function NodeConfigPanel() {
     }
   };
 
+  const renderField = (f: FieldDef) => {
+    const val = fields[f.key];
+
+    if (f.type === "number") {
+      return (
+        <input
+          type="number"
+          value={val as number ?? 0}
+          min={f.min}
+          max={f.max}
+          step={f.step ?? 1}
+          onChange={(e) => setField(f.key, Number(e.target.value))}
+          style={inputStyle}
+        />
+      );
+    }
+    if (f.type === "select") {
+      return (
+        <select
+          value={val as string ?? f.options[0]}
+          onChange={(e) => setField(f.key, e.target.value)}
+          style={inputStyle}
+        >
+          {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+    }
+    if (f.type === "toggle") {
+      return (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={val as boolean ?? false}
+            onChange={(e) => setField(f.key, e.target.checked)}
+            style={{ accentColor: "#2563eb", width: 14, height: 14 }}
+          />
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>{val ? "Enabled" : "Disabled"}</span>
+        </label>
+      );
+    }
+    if (f.type === "text") {
+      return (
+        <input
+          type="text"
+          value={val as string ?? ""}
+          placeholder={(f as any).placeholder}
+          onChange={(e) => setField(f.key, e.target.value)}
+          style={inputStyle}
+        />
+      );
+    }
+    if (f.type === "number-list") {
+      const list = (val as number[] | undefined) ?? [];
+      return (
+        <input
+          type="text"
+          value={list.join(", ")}
+          onChange={(e) => {
+            const parsed = e.target.value
+              .split(",")
+              .map((s) => parseInt(s.trim(), 10))
+              .filter((n) => !isNaN(n));
+            setField(f.key, parsed);
+          }}
+          placeholder="e.g. 80, 443"
+          style={inputStyle}
+        />
+      );
+    }
+    if (f.type === "ip-rules") {
+      const rules = (val as any[]) ?? [];
+      return (
+        <IpRuleEditor
+          rules={rules}
+          onChange={(r) => setField(f.key, r)}
+        />
+      );
+    }
+    return null;
+  };
+
   return (
     <div
       style={{
-        width: 280,
-        background: "#0f1117",
+        width: 290,
+        background: "#0b0d18",
         borderLeft: "1px solid #2d3748",
         display: "flex",
         flexDirection: "column",
@@ -52,6 +297,7 @@ export default function NodeConfigPanel() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          background: "#0a0c14",
         }}
       >
         <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#64748b", letterSpacing: 1 }}>
@@ -67,7 +313,7 @@ export default function NodeConfigPanel() {
 
       <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
         {/* Node type badge */}
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 14 }}>
           <div
             style={{
               display: "inline-block",
@@ -80,14 +326,14 @@ export default function NodeConfigPanel() {
               textTransform: "uppercase",
             }}
           >
-            {node.data.moduleType as string}
+            {moduleType}
           </div>
           <div style={{ fontSize: 10, color: "#475569", marginTop: 4 }}>ID: {node.id}</div>
         </div>
 
         {/* Label */}
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 4 }}>Label</label>
+        <div style={fieldGroup}>
+          <label style={fieldLabel}>Label</label>
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
@@ -95,42 +341,71 @@ export default function NodeConfigPanel() {
           />
         </div>
 
-        {/* Config JSON editor */}
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 11, color: "#94a3b8", display: "block", marginBottom: 4 }}>
-            Config (JSON)
-          </label>
-          <textarea
-            value={configText}
-            onChange={(e) => setConfigText(e.target.value)}
-            rows={12}
-            style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
-          />
-          {error && (
-            <div style={{ color: "#f87171", fontSize: 11, marginTop: 4 }}>{error}</div>
-          )}
-        </div>
+        <div style={{ borderTop: "1px solid #1e2435", margin: "12px 0" }} />
 
-        <button onClick={handleApply} style={btnStyle}>
+        {/* Form fields or raw JSON */}
+        {!showRaw ? (
+          schema.length === 0 ? (
+            <div style={{ fontSize: 12, color: "#475569", fontStyle: "italic" }}>No configurable options.</div>
+          ) : (
+            schema.map((f) => (
+              <div key={f.key} style={fieldGroup}>
+                <label style={fieldLabel}>{f.label}</label>
+                {renderField(f)}
+              </div>
+            ))
+          )
+        ) : (
+          <div style={fieldGroup}>
+            <label style={fieldLabel}>Raw JSON</label>
+            <textarea
+              value={rawText}
+              onChange={(e) => handleRawChange(e.target.value)}
+              rows={10}
+              style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: 11 }}
+            />
+          </div>
+        )}
+
+        {error && <div style={{ color: "#f87171", fontSize: 11, marginBottom: 8 }}>{error}</div>}
+
+        <button onClick={handleApply} style={btnPrimary}>
           Apply
         </button>
+
+        {/* Advanced toggle */}
+        <div style={{ marginTop: 10, textAlign: "center" }}>
+          <button
+            onClick={() => setShowRaw((v) => !v)}
+            style={{
+              background: "none", border: "none",
+              color: "#475569", fontSize: 11, cursor: "pointer",
+              textDecoration: "underline",
+            }}
+          >
+            {showRaw ? "Back to form" : "Advanced (raw JSON)"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
+// ─── Shared styles ────────────────────────────────────────────────────────────
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  background: "#1e2435",
-  border: "1px solid #374151",
+  background: "#131620",
+  border: "1px solid #2d3748",
   borderRadius: 4,
   color: "#e2e8f0",
-  padding: "6px 8px",
+  padding: "5px 8px",
   fontSize: 12,
   outline: "none",
+  boxSizing: "border-box",
 };
 
-const btnStyle: React.CSSProperties = {
+const btnPrimary: React.CSSProperties = {
   width: "100%",
   background: "#2563eb",
   border: "none",
@@ -140,4 +415,28 @@ const btnStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
+};
+
+const btnSecondary: React.CSSProperties = {
+  background: "#1e2435",
+  border: "1px solid #374151",
+  borderRadius: 4,
+  color: "#94a3b8",
+  padding: "5px 10px",
+  fontSize: 12,
+  cursor: "pointer",
+};
+
+const fieldGroup: React.CSSProperties = {
+  marginBottom: 12,
+};
+
+const fieldLabel: React.CSSProperties = {
+  fontSize: 11,
+  color: "#64748b",
+  display: "block",
+  marginBottom: 4,
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
 };

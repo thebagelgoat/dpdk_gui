@@ -1,4 +1,5 @@
 #include "module_base.h"
+#include "../node_out.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -29,20 +30,8 @@ static int counter_process(node_desc_t *node) {
     uint64_t bytes = 0;
     for (unsigned i = 0; i < n; i++) bytes += pkts[i]->pkt_len;
 
-    /* Pass through to output if connected, otherwise free */
-    unsigned processed = 0;
-    if (node->output_rings[0] && node->output_rings[0]->ring) {
-        unsigned enq = rte_ring_enqueue_burst(node->output_rings[0]->ring,
-                                               (void **)pkts, n, NULL);
-        for (unsigned i = enq; i < n; i++) {
-            rte_pktmbuf_free(pkts[i]);
-            atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
-        }
-        processed = enq;
-    } else {
-        for (unsigned i = 0; i < n; i++) rte_pktmbuf_free(pkts[i]);
-        processed = n;  /* counted even if no downstream */
-    }
+    unsigned processed = node_out(node, pkts, n);
+    if (processed == 0 && node->n_outputs == 0) processed = n; /* sink node: count anyway */
 
     atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
     atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -23,15 +23,16 @@ export default function AnimatedEdge({
 }: EdgeProps<AnimatedEdgeData>) {
   const stats = useEngineStore((s) => s.stats);
   const isRunning = useEngineStore((s) => s.status === "running");
+  const [hovered, setHovered] = useState(false);
 
   const ringName = data?.ring?.name ?? "";
   const ringStats = isRunning ? stats?.rings.find((r) => r.name === ringName) : undefined;
   const fillPct = ringStats?.fill_pct ?? 0;
 
-  // Color: green → yellow → red based on fill %
   const edgeColor =
     fillPct > 80 ? "#ef4444" : fillPct > 50 ? "#f59e0b" : "#22c55e";
   const baseColor = isRunning ? edgeColor : "#475569";
+  const strokeWidth = hovered ? 3.5 : 2;
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX, sourceY, sourcePosition,
@@ -40,10 +41,27 @@ export default function AnimatedEdge({
 
   return (
     <>
+      {/* Invisible wide hit area for easier hovering */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={18}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ cursor: "pointer" }}
+      />
       <BaseEdge
         id={id}
         path={edgePath}
-        style={{ stroke: baseColor, strokeWidth: 2 }}
+        style={{
+          stroke: baseColor,
+          strokeWidth,
+          strokeDasharray: isRunning ? "8 4" : undefined,
+          animation: isRunning ? "dashdraw 0.5s linear infinite" : undefined,
+          transition: "stroke 0.3s ease, stroke-width 0.15s ease",
+          pointerEvents: "none",
+        }}
         markerEnd="url(#arrowhead)"
       />
       {isRunning && ringStats && (
