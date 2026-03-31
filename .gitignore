@@ -1,0 +1,18 @@
+# Build outputs
+engine/dpdk_engine
+engine/*.o
+engine/modules/*.o
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+backend/graphs/active.json
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Runtime
+/tmp/dpdk_engine.sock
+*.log
