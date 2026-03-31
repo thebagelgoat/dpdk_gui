@@ -1,7 +1,10 @@
 from __future__ import annotations
+import psutil
 from models.graph_schema import GraphSchema, NodeSchema, HEAVY_TYPES, LIGHTWEIGHT_TYPES
 
-AVAILABLE_CORES = [1, 2, 3]  # Core 0 reserved for OS + FastAPI
+def _available_cores() -> list[int]:
+    """All logical cores except core 0 (reserved for OS + FastAPI)."""
+    return list(range(1, psutil.cpu_count(logical=True)))
 
 
 def allocate_cores(graph: GraphSchema) -> dict[str, int]:
@@ -10,15 +13,16 @@ def allocate_cores(graph: GraphSchema) -> dict[str, int]:
     Returns {node_id: core_id}.
     Raises ValueError if too many heavy modules for available cores.
     """
+    available_cores = _available_cores()
     nodes = graph.graph.nodes
     heavy = [n for n in nodes if n.type in HEAVY_TYPES]
     light = [n for n in nodes if n.type in LIGHTWEIGHT_TYPES]
 
-    if len(heavy) > len(AVAILABLE_CORES):
+    if len(heavy) > len(available_cores):
         raise ValueError(
             f"Graph has {len(heavy)} processing modules but only "
-            f"{len(AVAILABLE_CORES)} data-plane cores available (cores 1-3). "
-            f"Remove {len(heavy) - len(AVAILABLE_CORES)} heavy module(s) or "
+            f"{len(available_cores)} data-plane cores available (cores 1-{available_cores[-1]}). "
+            f"Remove {len(heavy) - len(available_cores)} heavy module(s) or "
             f"use counter/template modules which can share cores."
         )
 
@@ -26,13 +30,13 @@ def allocate_cores(graph: GraphSchema) -> dict[str, int]:
 
     # Assign heavy modules to cores in order
     for i, node in enumerate(heavy):
-        assignment[node.id] = AVAILABLE_CORES[i]
+        assignment[node.id] = available_cores[i]
 
     # Pack lightweight modules onto the last used core
     if heavy:
-        last_core = AVAILABLE_CORES[len(heavy) - 1]
+        last_core = available_cores[len(heavy) - 1]
     else:
-        last_core = AVAILABLE_CORES[0]
+        last_core = available_cores[0]
 
     for node in light:
         assignment[node.id] = last_core

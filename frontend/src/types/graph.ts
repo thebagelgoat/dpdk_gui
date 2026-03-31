@@ -1,6 +1,6 @@
 export type ModuleType =
   | "nic_rx" | "nic_tx"
-  | "ip_filter" | "vlan_filter" | "port_filter"
+  | "ip_filter" | "vlan_filter" | "port_filter" | "proto_filter"
   | "pcap_recorder" | "counter" | "template";
 
 export interface RingConfig {
@@ -99,6 +99,20 @@ export const MODULE_DEFS: ModuleDefinition[] = [
     description: "Filter packets by TCP/UDP port",
     color: "#d97706",
     defaultConfig: { protocol: "both", ports: [80, 443], action: "pass", output_mode: "first" },
+    maxInputs: 1,
+    maxOutputs: 4,
+  },
+  {
+    type: "proto_filter",
+    label: "Proto Filter",
+    description: "Filter by EtherType or IP protocol",
+    color: "#d97706",
+    defaultConfig: {
+      protocols: ["icmp", "gre"],
+      action: "pass",
+      default_action: "drop",
+      output_mode: "first",
+    },
     maxInputs: 1,
     maxOutputs: 4,
   },

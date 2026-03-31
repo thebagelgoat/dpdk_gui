@@ -4,24 +4,25 @@
   "graph": {
     "nodes": [
       {
-        "id": "node_1774986843423_0",
+        "id": "node_1774989376944_0",
         "type": "nic_rx",
         "label": "NIC RX",
         "core": 1,
         "config": {
           "port_id": 0,
           "queue_id": 0,
-          "burst_size": 32
+          "burst_size": 32,
+          "output_mode": "duplicate"
         },
         "position": {
-          "x": -222.47199999999992,
-          "y": -9.687999999999988
+          "x": -199.0,
+          "y": 3.5
         }
       },
       {
-        "id": "node_1774986846804_1",
+        "id": "node_1774989379327_1",
         "type": "ip_filter",
-        "label": "IP Filter",
+        "label": "Src",
         "core": 1,
         "config": {
           "rules": [
@@ -31,48 +32,110 @@
               "action": "pass"
             }
           ],
-          "default_action": "drop"
+          "default_action": "drop",
+          "output_mode": "first"
         },
         "position": {
-          "x": 85.07200000000017,
-          "y": -24.679999999999964
+          "x": 41.43200000000007,
+          "y": -53.97599999999996
         }
       },
       {
-        "id": "node_1774986946529_5",
-        "type": "nic_tx",
-        "label": "NIC TX",
+        "id": "node_1774989392171_3",
+        "type": "ip_filter",
+        "label": "Dest",
         "core": 1,
         "config": {
-          "port_id": 1,
-          "queue_id": 0
+          "rules": [
+            {
+              "src_cidr": "0.0.0.0/0",
+              "dst_cidr": "192.168.1.53/32",
+              "action": "pass"
+            }
+          ],
+          "default_action": "drop",
+          "output_mode": "first"
         },
         "position": {
-          "x": 674.5244800000002,
-          "y": -57.17567999999983
+          "x": 40.58400000000012,
+          "y": 66.63200000000012
+        }
+      },
+      {
+        "id": "node_1774989478809_5",
+        "type": "pcap_recorder",
+        "label": "PCAP Recorder",
+        "core": 1,
+        "config": {
+          "output_path": "/tmp/capture_src.pcap",
+          "max_file_size_mb": 512,
+          "snaplen": 65535,
+          "output_mode": "first"
+        },
+        "position": {
+          "x": 298.46400000000006,
+          "y": -66.15199999999996
+        }
+      },
+      {
+        "id": "node_1774989481617_6",
+        "type": "pcap_recorder",
+        "label": "PCAP Recorder",
+        "core": 1,
+        "config": {
+          "output_path": "/tmp/capture_dest.pcap",
+          "max_file_size_mb": 512,
+          "snaplen": 65535,
+          "output_mode": "first"
+        },
+        "position": {
+          "x": 312.1680000000001,
+          "y": 72.78400000000005
         }
       }
     ],
     "edges": [
       {
-        "id": "edge_1774986852601_2",
-        "source": "node_1774986843423_0",
+        "id": "edge_1774989388790_2",
+        "source": "node_1774989376944_0",
         "source_port": 0,
-        "target": "node_1774986846804_1",
+        "target": "node_1774989379327_1",
         "target_port": 0,
         "ring": {
-          "name": "ring_node_1774986843423_0_0_node_1774986846804_1_0",
+          "name": "ring_node_1774989376944_0_0_node_1774989379327_1_0",
           "size": 1024
         }
       },
       {
-        "id": "edge_1774986951716_6",
-        "source": "node_1774986846804_1",
+        "id": "edge_1774989396004_4",
+        "source": "node_1774989376944_0",
         "source_port": 0,
-        "target": "node_1774986946529_5",
+        "target": "node_1774989392171_3",
         "target_port": 0,
         "ring": {
-          "name": "ring_node_1774986846804_1_0_node_1774986946529_5_0",
+          "name": "ring_node_1774989376944_0_0_node_1774989392171_3_0",
+          "size": 1024
+        }
+      },
+      {
+        "id": "edge_1774989505085_7",
+        "source": "node_1774989392171_3",
+        "source_port": 0,
+        "target": "node_1774989481617_6",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774989392171_3_0_node_1774989481617_6_0",
+          "size": 1024
+        }
+      },
+      {
+        "id": "edge_1774989508075_8",
+        "source": "node_1774989379327_1",
+        "source_port": 0,
+        "target": "node_1774989478809_5",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774989379327_1_0_node_1774989478809_5_0",
           "size": 1024
         }
       }

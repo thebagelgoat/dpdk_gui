@@ -48,6 +48,13 @@ const CONFIG_SCHEMA: Record<string, FieldDef[]> = {
     { type: "select",      key: "action",   label: "Action",   options: ["pass", "drop"] },
     ...OUTPUT_MODE_FIELDS,
   ],
+  proto_filter: [
+    { type: "text",   key: "protocols",      label: "Protocols (comma-separated)",
+      placeholder: "icmp, gre, ospf, arp, ipv6…" },
+    { type: "select", key: "action",         label: "Action on match",   options: ["pass", "drop"] },
+    { type: "select", key: "default_action", label: "Default action",    options: ["pass", "drop"] },
+    ...OUTPUT_MODE_FIELDS,
+  ],
   pcap_recorder: [
     { type: "text",   key: "output_path",      label: "Output Path", placeholder: "/tmp/capture.pcap" },
     { type: "number", key: "max_file_size_mb", label: "Max File Size (MB)", min: 0, max: 65536 },
@@ -237,12 +244,22 @@ export default function NodeConfigPanel() {
       );
     }
     if (f.type === "text") {
+      // Arrays (e.g. protocols) are stored as arrays but edited as comma strings
+      const strVal = Array.isArray(val) ? (val as string[]).join(", ") : (val as string ?? "");
       return (
         <input
           type="text"
-          value={val as string ?? ""}
+          value={strVal}
           placeholder={(f as any).placeholder}
-          onChange={(e) => setField(f.key, e.target.value)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            // If the original value was an array, keep it as an array
+            if (Array.isArray(val) || f.key === "protocols") {
+              setField(f.key, raw.split(",").map((s) => s.trim()).filter(Boolean));
+            } else {
+              setField(f.key, raw);
+            }
+          }}
           style={inputStyle}
         />
       );

@@ -7,7 +7,7 @@ interface Props {
 
 const CATEGORIES: { label: string; types: ModuleType[] }[] = [
   { label: "I / O",     types: ["nic_rx", "nic_tx"] },
-  { label: "Filters",   types: ["ip_filter", "vlan_filter", "port_filter"] },
+  { label: "Filters",   types: ["ip_filter", "vlan_filter", "port_filter", "proto_filter"] },
   { label: "Recording", types: ["pcap_recorder"] },
   { label: "Utility",   types: ["counter", "template"] },
 ];

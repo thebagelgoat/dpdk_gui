@@ -21,12 +21,12 @@ class Position(BaseModel):
 
 
 ModuleType = Literal[
-    "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter",
+    "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter", "proto_filter",
     "pcap_recorder", "counter", "template",
 ]
 
 HEAVY_TYPES = {
-    "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter",
+    "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter", "proto_filter",
     "pcap_recorder",
 }
 LIGHTWEIGHT_TYPES = {"counter", "template"}
@@ -36,7 +36,7 @@ class NodeSchema(BaseModel):
     id: str
     type: ModuleType
     label: str = ""
-    core: int = Field(default=1, ge=1, le=3)
+    core: int = Field(default=1, ge=1)
     config: dict[str, Any] = Field(default_factory=dict)
     position: Position = Field(default_factory=Position)
 

@@ -65,7 +65,7 @@ async def system_info() -> dict:
     return {
         "cpu": {
             "count": cpu_count,
-            "available_dpdk_cores": [1, 2, 3],
+            "available_dpdk_cores": list(range(1, cpu_count)),
             "percent_per_core": cpu_percent,
         },
         "memory": {

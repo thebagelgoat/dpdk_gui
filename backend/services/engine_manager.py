@@ -136,8 +136,10 @@ class EngineManager:
         return self.state == "running"
 
     def _build_command(self) -> list[str]:
-        # Determine which lcores are needed (1-3)
-        lcores = "1,2,3"
+        import psutil
+        # All cores except 0 (reserved for OS + FastAPI)
+        n = psutil.cpu_count(logical=True)
+        lcores = ",".join(str(c) for c in range(1, n))
 
         cmd = [
             ENGINE_BINARY,

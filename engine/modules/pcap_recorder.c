@@ -135,8 +135,12 @@ static int pcap_process(node_desc_t *node) {
     }
 
     if (processed > 0) {
-        unsigned fwd = node_out(node, pass, processed);
-        (void)fwd; /* all counted as processed regardless of downstream */
+        if (node->n_outputs > 0) {
+            node_out(node, pass, processed);
+        } else {
+            /* Sink mode: no downstream — free packets without counting as drops */
+            for (unsigned i = 0; i < processed; i++) rte_pktmbuf_free(pass[i]);
+        }
     }
 
     atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);

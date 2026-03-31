@@ -1,0 +1,86 @@
+{
+  "version": "1",
+  "name": "laptopfilter",
+  "graph": {
+    "nodes": [
+      {
+        "id": "node_1774986843423_0",
+        "type": "nic_rx",
+        "label": "NIC RX",
+        "core": 1,
+        "config": {
+          "port_id": 0,
+          "queue_id": 0,
+          "burst_size": 32
+        },
+        "position": {
+          "x": -191.22976,
+          "y": -11.554239999999986
+        }
+      },
+      {
+        "id": "node_1774988046667_14",
+        "type": "ip_filter",
+        "label": "IP Filter",
+        "core": 1,
+        "config": {
+          "rules": [
+            {
+              "src_cidr": "192.168.1.53/32",
+              "dst_cidr": "0.0.0.0/0",
+              "action": "pass"
+            },
+            {
+              "src_cidr": "0.0.0.0/0",
+              "dst_cidr": "192.168.1.53/32",
+              "action": "pass"
+            }
+          ],
+          "default_action": "drop"
+        },
+        "position": {
+          "x": 123.98846693333348,
+          "y": -11.780282133333259
+        }
+      },
+      {
+        "id": "node_1774988853036_21",
+        "type": "counter",
+        "label": "Counter",
+        "core": 1,
+        "config": {
+          "label": "counter",
+          "reset_on_read": false
+        },
+        "position": {
+          "x": 377.90626880000025,
+          "y": 7.635282000000018
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_1774988050813_15",
+        "source": "node_1774986843423_0",
+        "source_port": 0,
+        "target": "node_1774988046667_14",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774986843423_0_0_node_1774988046667_14_0",
+          "size": 1024
+        }
+      },
+      {
+        "id": "edge_1774988857226_22",
+        "source": "node_1774988046667_14",
+        "source_port": 0,
+        "target": "node_1774988853036_21",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774988046667_14_0_node_1774988853036_21_0",
+          "size": 1024
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "version": "1",
+  "name": "test",
+  "graph": {
+    "nodes": [
+      {
+        "id": "node_1774989376944_0",
+        "type": "nic_rx",
+        "label": "NIC RX",
+        "core": 1,
+        "config": {
+          "port_id": 0,
+          "queue_id": 0,
+          "burst_size": 32,
+          "output_mode": "duplicate"
+        },
+        "position": {
+          "x": -199.0,
+          "y": 3.5
+        }
+      },
+      {
+        "id": "node_1774990036403_1",
+        "type": "proto_filter",
+        "label": "Proto Filter",
+        "core": 1,
+        "config": {
+          "protocols": [
+            "http"
+          ],
+          "action": "pass",
+          "default_action": "drop",
+          "output_mode": "first"
+        },
+        "position": {
+          "x": 34.25999999999999,
+          "y": -30.68
+        }
+      },
+      {
+        "id": "node_1774990100870_3",
+        "type": "pcap_recorder",
+        "label": "PCAP Recorder",
+        "core": 1,
+        "config": {
+          "output_path": "/tmp/capture.pcap",
+          "max_file_size_mb": 512,
+          "snaplen": 65535,
+          "output_mode": "first"
+        },
+        "position": {
+          "x": 232.3200000000001,
+          "y": -45.799999999999976
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_1774990039501_2",
+        "source": "node_1774989376944_0",
+        "source_port": 0,
+        "target": "node_1774990036403_1",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774989376944_0_0_node_1774990036403_1_0",
+          "size": 1024
+        }
+      },
+      {
+        "id": "edge_1774990108699_4",
+        "source": "node_1774990036403_1",
+        "source_port": 0,
+        "target": "node_1774990100870_3",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1774990036403_1_0_node_1774990100870_3_0",
+          "size": 1024
+        }
+      }
+    ]
+  }
+}

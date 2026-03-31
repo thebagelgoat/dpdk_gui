@@ -14,6 +14,7 @@ module_ops_t *module_registry[] = {
     [MOD_IP_FILTER]     = &ip_filter_ops,
     [MOD_VLAN_FILTER]   = &vlan_filter_ops,
     [MOD_PORT_FILTER]   = &port_filter_ops,
+    [MOD_PROTO_FILTER]  = &proto_filter_ops,
     [MOD_PCAP_RECORDER] = &pcap_recorder_ops,
     [MOD_COUNTER]       = &counter_ops,
     [MOD_TEMPLATE]      = &template_ops,
@@ -25,6 +26,7 @@ module_type_t module_type_from_string(const char *s) {
     if (!strcmp(s, "ip_filter"))     return MOD_IP_FILTER;
     if (!strcmp(s, "vlan_filter"))   return MOD_VLAN_FILTER;
     if (!strcmp(s, "port_filter"))   return MOD_PORT_FILTER;
+    if (!strcmp(s, "proto_filter"))  return MOD_PROTO_FILTER;
     if (!strcmp(s, "pcap_recorder")) return MOD_PCAP_RECORDER;
     if (!strcmp(s, "counter"))       return MOD_COUNTER;
     if (!strcmp(s, "template"))      return MOD_TEMPLATE;
@@ -124,6 +126,7 @@ int parse_graph(const char *path, pipeline_t *pipeline) {
         const char *tgt_id = json_string_value(json_object_get(jedge, "target"));
         int src_port = (int)json_integer_value(json_object_get(jedge, "source_port"));
         int tgt_port = (int)json_integer_value(json_object_get(jedge, "target_port"));
+        (void)src_port; /* kept for ring name generation; output wiring uses n_outputs order */
 
         if (!src_id || !tgt_id) { fprintf(stderr, "Edge %zu missing source/target\n", i); continue; }
 
@@ -149,13 +152,15 @@ int parse_graph(const char *path, pipeline_t *pipeline) {
             return -1;
         }
 
-        /* Wire source node output and target node input */
+        /* Wire source node output and target node input.
+           Output rings are assigned in edge-declaration order so that multiple
+           edges from the same source handle each get their own slot (0, 1, 2…).
+           Input rings still use tgt_port for explicit multi-input nodes. */
         for (int j = 0; j < pipeline->n_nodes; j++) {
             node_desc_t *n = &pipeline->nodes[j];
             if (!strcmp(n->id, src_id)) {
-                if (src_port < MAX_OUTPUTS) {
-                    n->output_rings[src_port] = e;
-                    if (src_port >= n->n_outputs) n->n_outputs = src_port + 1;
+                if (n->n_outputs < MAX_OUTPUTS) {
+                    n->output_rings[n->n_outputs++] = e;
                 }
             }
             if (!strcmp(n->id, tgt_id)) {

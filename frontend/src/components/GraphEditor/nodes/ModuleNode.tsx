@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
 import { useEngineStore } from "../../../store/engineStore";
 import { useUIStore } from "../../../store/uiStore";
-import { useGraphStore } from "../../../store/graphStore";
 
 interface ModuleNodeData {
   label: string;
@@ -23,29 +22,17 @@ const formatPps = (pps: number) => {
 export default function ModuleNode({ id, data, selected }: NodeProps<ModuleNodeData>) {
   const stats = useEngineStore((s) => s.stats);
   const setSelectedNode = useUIStore((s) => s.setSelectedNode);
-  const edges = useGraphStore((s) => s.edges);
   const [collapsed, setCollapsed] = useState(false);
 
   const nodeStats = stats?.nodes.find((n) => n.id === id);
   const isRunning = useEngineStore((s) => s.status === "running");
 
-  const inputHandles = data.maxInputs > 0
-    ? Array.from({ length: data.maxInputs }, (_, i) => i)
-    : [];
+  // Single input handle, single output handle — multiple edges connect to the same handle
+  const inputHandles  = data.maxInputs  > 0 ? [0] : [];
+  const outputHandles = data.maxOutputs > 0 ? [0] : [];
 
-  // Show handles for connected outputs + 1 spare, up to maxOutputs
-  const usedOutputPorts = new Set(
-    edges
-      .filter((e) => e.source === id && e.sourceHandle?.startsWith("out-"))
-      .map((e) => parseInt(e.sourceHandle!.replace("out-", ""), 10))
-  );
-  const visibleOutputCount = data.maxOutputs > 0
-    ? Math.min(Math.max(usedOutputPorts.size + 1, 1), data.maxOutputs)
-    : 0;
-  const outputHandles = Array.from({ length: visibleOutputCount }, (_, i) => i);
-
-  const inputSpacing = inputHandles.length > 1 ? 100 / (inputHandles.length + 1) : 50;
-  const outputSpacing = outputHandles.length > 1 ? 100 / (outputHandles.length + 1) : 50;
+  const inputSpacing  = 50;
+  const outputSpacing = 50;
 
   return (
     <div

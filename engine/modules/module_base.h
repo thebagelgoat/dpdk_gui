@@ -41,6 +41,7 @@ extern module_ops_t nic_tx_ops;
 extern module_ops_t ip_filter_ops;
 extern module_ops_t vlan_filter_ops;
 extern module_ops_t port_filter_ops;
+extern module_ops_t proto_filter_ops;
 extern module_ops_t pcap_recorder_ops;
 extern module_ops_t counter_ops;
 extern module_ops_t template_ops;
