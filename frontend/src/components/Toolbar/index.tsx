@@ -6,7 +6,7 @@ import { saveGraph, listGraphs, getGraph } from "../../api/graphs";
 import StatusBadge from "./StatusBadge";
 
 export default function Toolbar() {
-  const { graphName, setGraphName, toGraphSchema, loadGraph, isDirty } = useGraphStore();
+  const { graphName, setGraphName, toGraphSchema, loadGraph, isDirty, markSaved } = useGraphStore();
   const { status, play, stop, errorMsg } = useEngineStore();
   const { setGraphListOpen, graphListOpen } = useUIStore();
   const [savedGraphs, setSavedGraphs] = useState<string[]>([]);
@@ -31,6 +31,7 @@ export default function Toolbar() {
     try {
       const schema = toGraphSchema();
       await saveGraph(graphName, schema);
+      markSaved();
       setMsg("Saved!");
       setTimeout(() => setMsg(""), 2000);
       refreshList();

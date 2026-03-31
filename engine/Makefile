@@ -15,7 +15,8 @@ SRCS := main.c \
         modules/ip_filter.c \
         modules/vlan_filter.c \
         modules/port_filter.c \
-        modules/proto_filter.c \
+        modules/protocol_filter.c \
+        modules/mac_filter.c \
         modules/pcap_recorder.c \
         modules/counter.c \
         modules/template.c

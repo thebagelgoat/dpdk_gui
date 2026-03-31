@@ -23,9 +23,11 @@ export function useStatsWebSocket() {
 
     ws.onmessage = (evt) => {
       try {
-        const data: StatsMessage = JSON.parse(evt.data);
+        const data = JSON.parse(evt.data) as StatsMessage & { status?: string; msg?: string };
         if (data.type === "stats") {
-          setStats(data);
+          setStats(data as StatsMessage);
+        } else if (data.type === "engine_status") {
+          setStatus((data.status as "stopped" | "error") ?? "error", data.msg ?? "Engine stopped");
         }
       } catch {
         /* ignore parse errors */

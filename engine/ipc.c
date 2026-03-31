@@ -1,5 +1,6 @@
 #include "ipc.h"
 #include "stats.h"
+#include "modules/module_base.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,13 @@ static json_t *build_stats_response(void) {
         json_object_set_new(obj, "bytes_processed", json_integer(ns->bytes_processed));
         json_object_set_new(obj, "core_id",         json_integer(ns->core_id));
         json_object_set_new(obj, "pps",             json_real(ns->pps));
+        json_object_set_new(obj, "bps",             json_real(ns->bps));
+        if (ns->n_rule_counters > 0) {
+            json_t *hits = json_array();
+            for (int j = 0; j < ns->n_rule_counters; j++)
+                json_array_append_new(hits, json_integer((json_int_t)ns->rule_hits[j]));
+            json_object_set_new(obj, "rule_hits", hits);
+        }
         json_array_append_new(nodes_arr, obj);
     }
     json_object_set_new(root, "nodes", nodes_arr);
@@ -88,7 +96,8 @@ static json_t *build_stats_response(void) {
         json_object_set_new(obj, "name",     json_string(rs->ring_name));
         json_object_set_new(obj, "capacity", json_integer(rs->capacity));
         json_object_set_new(obj, "used",     json_integer(rs->used));
-        json_object_set_new(obj, "fill_pct", json_real(rs->fill_pct));
+        json_object_set_new(obj, "fill_pct",      json_real(rs->fill_pct));
+        json_object_set_new(obj, "peak_fill_pct", json_real(rs->peak_fill_pct));
         json_array_append_new(rings_arr, obj);
     }
     json_object_set_new(root, "rings", rings_arr);
@@ -124,8 +133,39 @@ static void *ipc_thread_func(void *arg) {
             const char *cmd_str = json_string_value(json_object_get(cmd, "cmd"));
             if (!cmd_str) { json_decref(cmd); break; }
 
-            if (!strcmp(cmd_str, "get_stats")) {
+            if (!strcmp(cmd_str, "ping")) {
+                json_t *resp = json_object();
+                json_object_set_new(resp, "type", json_string("pong"));
+                send_msg(s_client_fd, resp);
+                json_decref(resp);
+            } else if (!strcmp(cmd_str, "get_stats")) {
                 json_t *resp = build_stats_response();
+                send_msg(s_client_fd, resp);
+                json_decref(resp);
+            } else if (!strcmp(cmd_str, "reload_config")) {
+                const char *node_id = json_string_value(json_object_get(cmd, "node_id"));
+                json_t *new_cfg = json_object_get(cmd, "config");
+                json_t *resp = json_object();
+                int ok = 0;
+                if (node_id && new_cfg && s_pipeline) {
+                    for (int ni = 0; ni < s_pipeline->n_nodes; ni++) {
+                        node_desc_t *n = &s_pipeline->nodes[ni];
+                        if (strcmp(n->id, node_id) != 0) continue;
+                        module_ops_t *ops = (module_ops_t *)get_module_ops(n->type);
+                        if (ops && ops->parse_config) {
+                            void *new_mod_cfg = ops->parse_config(new_cfg);
+                            if (new_mod_cfg) {
+                                n->module_cfg = new_mod_cfg;   /* pointer-width write: atomic on x86 */
+                                if (ops->rule_count)
+                                    n->n_rule_counters = ops->rule_count(new_mod_cfg);
+                                ok = 1;
+                            }
+                        }
+                        break;
+                    }
+                }
+                json_object_set_new(resp, "type", json_string(ok ? "ack" : "error"));
+                if (!ok) json_object_set_new(resp, "msg", json_string("reload failed"));
                 send_msg(s_client_fd, resp);
                 json_decref(resp);
             } else if (!strcmp(cmd_str, "shutdown")) {

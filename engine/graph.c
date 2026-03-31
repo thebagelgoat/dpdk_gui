@@ -13,10 +13,11 @@ module_ops_t *module_registry[] = {
     [MOD_NIC_TX]        = &nic_tx_ops,
     [MOD_IP_FILTER]     = &ip_filter_ops,
     [MOD_VLAN_FILTER]   = &vlan_filter_ops,
-    [MOD_PORT_FILTER]   = &port_filter_ops,
-    [MOD_PROTO_FILTER]  = &proto_filter_ops,
-    [MOD_PCAP_RECORDER] = &pcap_recorder_ops,
-    [MOD_COUNTER]       = &counter_ops,
+    [MOD_PORT_FILTER]      = &port_filter_ops,
+    [MOD_PROTOCOL_FILTER]  = &protocol_filter_ops,
+    [MOD_MAC_FILTER]       = &mac_filter_ops,
+    [MOD_PCAP_RECORDER]    = &pcap_recorder_ops,
+    [MOD_SPEEDOMETER]   = &counter_ops,
     [MOD_TEMPLATE]      = &template_ops,
 };
 
@@ -25,10 +26,11 @@ module_type_t module_type_from_string(const char *s) {
     if (!strcmp(s, "nic_tx"))        return MOD_NIC_TX;
     if (!strcmp(s, "ip_filter"))     return MOD_IP_FILTER;
     if (!strcmp(s, "vlan_filter"))   return MOD_VLAN_FILTER;
-    if (!strcmp(s, "port_filter"))   return MOD_PORT_FILTER;
-    if (!strcmp(s, "proto_filter"))  return MOD_PROTO_FILTER;
-    if (!strcmp(s, "pcap_recorder")) return MOD_PCAP_RECORDER;
-    if (!strcmp(s, "counter"))       return MOD_COUNTER;
+    if (!strcmp(s, "port_filter"))      return MOD_PORT_FILTER;
+    if (!strcmp(s, "protocol_filter"))  return MOD_PROTOCOL_FILTER;
+    if (!strcmp(s, "mac_filter"))       return MOD_MAC_FILTER;
+    if (!strcmp(s, "pcap_recorder"))    return MOD_PCAP_RECORDER;
+    if (!strcmp(s, "speedometer"))   return MOD_SPEEDOMETER;
     if (!strcmp(s, "template"))      return MOD_TEMPLATE;
     fprintf(stderr, "Unknown module type: %s\n", s);
     return MOD_TEMPLATE;
@@ -104,6 +106,9 @@ int parse_graph(const char *path, pipeline_t *pipeline) {
                 json_decref(root);
                 return -1;
             }
+            /* Set up rule hit counter slots */
+            if (module_registry[n->type]->rule_count)
+                n->n_rule_counters = module_registry[n->type]->rule_count(n->module_cfg);
         }
 
         pipeline->n_nodes++;
@@ -176,6 +181,10 @@ int parse_graph(const char *path, pipeline_t *pipeline) {
 
     json_decref(root);
     return 0;
+}
+
+void *get_module_ops(module_type_t type) {
+    return module_registry[type];
 }
 
 void pipeline_free(pipeline_t *pipeline) {

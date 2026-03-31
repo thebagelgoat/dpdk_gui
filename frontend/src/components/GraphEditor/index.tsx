@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -19,10 +19,31 @@ const nodeTypes = { module: ModuleNode };
 const edgeTypes = { animated: AnimatedEdge };
 
 export default function GraphEditor() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode } = useGraphStore();
+  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, undo, redo } =
+    useGraphStore();
   const { selectedNodeId, configPanelOpen } = useUIStore();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const dragTypeRef = useRef<string>("");
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      // Don't intercept when typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (ctrl && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (ctrl && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [undo, redo]);
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();

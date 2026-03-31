@@ -64,15 +64,22 @@ static void *ip_filter_parse(json_t *cfg) {
     return c;
 }
 
-static filter_action_t classify(ip_filter_cfg_t *c, uint32_t src_ip, uint32_t dst_ip) {
+static filter_action_t classify(ip_filter_cfg_t *c, uint32_t src_ip, uint32_t dst_ip,
+                                _Atomic uint64_t *hits) {
     for (int i = 0; i < c->n_rules; i++) {
         ip_rule_t *r = &c->rules[i];
         if ((src_ip & r->src_mask) == r->src_net &&
             (dst_ip & r->dst_mask) == r->dst_net) {
+            atomic_fetch_add_explicit(&hits[i], 1, memory_order_relaxed);
             return r->action;
         }
     }
+    atomic_fetch_add_explicit(&hits[c->n_rules], 1, memory_order_relaxed); /* default slot */
     return c->default_action;
+}
+
+static int ip_filter_rule_count(void *cfg) {
+    return ((ip_filter_cfg_t *)cfg)->n_rules + 1;  /* one per rule + one for default */
 }
 
 static int ip_filter_process(node_desc_t *node) {
@@ -96,7 +103,7 @@ static int ip_filter_process(node_desc_t *node) {
             struct rte_ipv4_hdr *ip = (struct rte_ipv4_hdr *)(eth + 1);
             uint32_t src = ntohl(ip->src_addr);
             uint32_t dst = ntohl(ip->dst_addr);
-            if (classify(c, src, dst) == ACTION_PASS) {
+            if (classify(c, src, dst, node->rule_hits) == ACTION_PASS) {
                 bytes += pkts[i]->pkt_len;
                 pass[n_pass++] = pkts[i];
                 continue;
@@ -125,4 +132,5 @@ module_ops_t ip_filter_ops = {
     .process      = ip_filter_process,
     .destroy      = NULL,
     .parse_config = ip_filter_parse,
+    .rule_count   = ip_filter_rule_count,
 };

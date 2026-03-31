@@ -130,6 +130,32 @@ class EngineManager:
             logger.warning("Stats fetch failed: %s", e)
             return None
 
+    async def reload_node_config(self, node_id: str, config: dict) -> bool:
+        if self.state != "running" or not self._writer:
+            return False
+        try:
+            async with self._ipc_lock:
+                await self._send_msg({"cmd": "reload_config", "node_id": node_id, "config": config})
+                resp = await asyncio.wait_for(self._recv_msg(), timeout=2.0)
+                return resp is not None and resp.get("type") == "ack"
+        except Exception as e:
+            logger.warning("Reload config failed: %s", e)
+            return False
+
+    async def ping(self) -> bool:
+        if self.state != "running" or not self._writer:
+            return False
+        try:
+            async with self._ipc_lock:
+                await self._send_msg({"cmd": "ping"})
+                resp = await asyncio.wait_for(self._recv_msg(), timeout=2.0)
+                return resp is not None and resp.get("type") == "pong"
+        except Exception:
+            return False
+
+    def mark_crashed(self) -> None:
+        self.state = "error"
+
     def is_running(self) -> bool:
         if self.proc and self.proc.returncode is not None:
             self.state = "stopped"

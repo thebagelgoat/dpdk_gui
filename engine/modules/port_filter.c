@@ -94,6 +94,8 @@ static int port_filter_process(node_desc_t *node) {
             }
         }
 
+        if (matched)
+            atomic_fetch_add_explicit(&node->rule_hits[0], 1, memory_order_relaxed);
         int should_pass = (c->action == ACTION_PASS) ? matched : !matched;
         if (should_pass) {
             bytes += pkts[i]->pkt_len;
@@ -112,9 +114,12 @@ static int port_filter_process(node_desc_t *node) {
     return n;
 }
 
+static int port_filter_rule_count(void *cfg) { (void)cfg; return 1; }
+
 module_ops_t port_filter_ops = {
     .init         = NULL,
     .process      = port_filter_process,
     .destroy      = NULL,
     .parse_config = port_filter_parse,
+    .rule_count   = port_filter_rule_count,
 };

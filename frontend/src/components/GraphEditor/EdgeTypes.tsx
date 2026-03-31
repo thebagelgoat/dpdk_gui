@@ -78,9 +78,18 @@ export default function AnimatedEdge({
               color: edgeColor,
               fontWeight: 700,
               pointerEvents: "none",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 1,
             }}
           >
-            {fillPct.toFixed(0)}%
+            <span>{fillPct.toFixed(0)}%</span>
+            {ringStats.peak_fill_pct > fillPct + 5 && (
+              <span style={{ color: "#94a3b8", fontSize: 9, fontWeight: 400 }}>
+                ▲{ringStats.peak_fill_pct.toFixed(0)}%
+              </span>
+            )}
           </div>
         </EdgeLabelRenderer>
       )}

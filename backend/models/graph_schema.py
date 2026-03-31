@@ -21,15 +21,17 @@ class Position(BaseModel):
 
 
 ModuleType = Literal[
-    "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter", "proto_filter",
-    "pcap_recorder", "counter", "template",
+    "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter",
+    "protocol_filter", "mac_filter",
+    "pcap_recorder", "speedometer", "template",
 ]
 
 HEAVY_TYPES = {
-    "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter", "proto_filter",
+    "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter",
+    "protocol_filter", "mac_filter",
     "pcap_recorder",
 }
-LIGHTWEIGHT_TYPES = {"counter", "template"}
+LIGHTWEIGHT_TYPES = {"speedometer", "template"}
 
 
 class NodeSchema(BaseModel):

@@ -30,9 +30,15 @@ static int counter_process(node_desc_t *node) {
     uint64_t bytes = 0;
     for (unsigned i = 0; i < n; i++) bytes += pkts[i]->pkt_len;
 
-    unsigned processed = node_out(node, pkts, n);
-    if (processed == 0 && node->n_outputs == 0) processed = n; /* sink node: count anyway */
+    /* Sink mode: free packets without calling node_out() so pkts_dropped is not incremented */
+    if (node->n_outputs == 0) {
+        for (unsigned i = 0; i < n; i++) rte_pktmbuf_free(pkts[i]);
+        atomic_fetch_add_explicit(&node->pkts_processed,  n,     memory_order_relaxed);
+        atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
+        return n;
+    }
 
+    unsigned processed = node_out(node, pkts, n);
     atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
     atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
     return n;

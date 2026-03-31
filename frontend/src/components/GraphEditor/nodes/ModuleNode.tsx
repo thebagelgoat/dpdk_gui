@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
 import { useEngineStore } from "../../../store/engineStore";
 import { useUIStore } from "../../../store/uiStore";
+import { useGraphStore } from "../../../store/graphStore";
 
 interface ModuleNodeData {
   label: string;
@@ -19,9 +20,17 @@ const formatPps = (pps: number) => {
   return `${pps.toFixed(0)} pps`;
 };
 
+const formatBps = (bps: number) => {
+  if (bps >= 1e9) return `${(bps / 1e9).toFixed(2)} GB/s`;
+  if (bps >= 1e6) return `${(bps / 1e6).toFixed(2)} MB/s`;
+  if (bps >= 1e3) return `${(bps / 1e3).toFixed(1)} KB/s`;
+  return `${bps.toFixed(0)} B/s`;
+};
+
 export default function ModuleNode({ id, data, selected }: NodeProps<ModuleNodeData>) {
   const stats = useEngineStore((s) => s.stats);
   const setSelectedNode = useUIStore((s) => s.setSelectedNode);
+  const nodeError = useGraphStore((s) => s.nodeErrors[id]);
   const [collapsed, setCollapsed] = useState(false);
 
   const nodeStats = stats?.nodes.find((n) => n.id === id);
@@ -37,13 +46,16 @@ export default function ModuleNode({ id, data, selected }: NodeProps<ModuleNodeD
   return (
     <div
       onClick={() => setSelectedNode(id)}
+      title={nodeError ?? undefined}
       style={{
         background: "#1e2035",
-        border: `2px solid ${selected ? data.color : data.color + "99"}`,
+        border: `2px solid ${nodeError ? "#ef4444" : selected ? data.color : data.color + "99"}`,
         borderRadius: 10,
         minWidth: 150,
         cursor: "pointer",
-        boxShadow: selected
+        boxShadow: nodeError
+          ? "0 0 0 2px #ef444480, 0 8px 32px #ef444440"
+          : selected
           ? `0 0 0 2px ${data.color}80, 0 8px 32px ${data.color}40`
           : "0 4px 20px rgba(0,0,0,0.55)",
         transition: "border-color 0.15s ease, box-shadow 0.15s ease",
@@ -103,6 +115,11 @@ export default function ModuleNode({ id, data, selected }: NodeProps<ModuleNodeD
                   ▼{nodeStats.pkts_dropped.toLocaleString()} drop
                 </span>
               )}
+              {data.moduleType === "speedometer" && (
+                <div style={{ color: "#7dd3fc", marginTop: 2 }}>
+                  {formatBps(nodeStats.bps ?? 0)}
+                </div>
+              )}
             </div>
           )}
           {!isRunning && (
@@ -110,6 +127,20 @@ export default function ModuleNode({ id, data, selected }: NodeProps<ModuleNodeD
               {data.moduleType === "nic_rx" || data.moduleType === "nic_tx"
                 ? `Port ${(data.config as any).port_id ?? 0}`
                 : "\u00a0"}
+            </div>
+          )}
+          {nodeError && (
+            <div style={{
+              marginTop: 4,
+              fontSize: 10,
+              color: "#f87171",
+              background: "#3f1c1c",
+              border: "1px solid #7f1d1d",
+              borderRadius: 4,
+              padding: "2px 6px",
+              lineHeight: 1.4,
+            }}>
+              ⚠ {nodeError}
             </div>
           )}
         </div>

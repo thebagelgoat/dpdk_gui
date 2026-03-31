@@ -4,7 +4,7 @@
   "graph": {
     "nodes": [
       {
-        "id": "node_1774989376944_0",
+        "id": "node_1775000316766_0",
         "type": "nic_rx",
         "label": "NIC RX",
         "core": 1,
@@ -12,130 +12,38 @@
           "port_id": 0,
           "queue_id": 0,
           "burst_size": 32,
-          "output_mode": "duplicate"
-        },
-        "position": {
-          "x": -199.0,
-          "y": 3.5
-        }
-      },
-      {
-        "id": "node_1774989379327_1",
-        "type": "ip_filter",
-        "label": "Src",
-        "core": 1,
-        "config": {
-          "rules": [
-            {
-              "src_cidr": "192.168.1.53/32",
-              "dst_cidr": "0.0.0.0/0",
-              "action": "pass"
-            }
-          ],
-          "default_action": "drop",
           "output_mode": "first"
         },
         "position": {
-          "x": 41.43200000000007,
-          "y": -53.97599999999996
+          "x": 29.5,
+          "y": 83.0
         }
       },
       {
-        "id": "node_1774989392171_3",
-        "type": "ip_filter",
-        "label": "Dest",
+        "id": "node_1775000320169_1",
+        "type": "speedometer",
+        "label": "Speedometer",
         "core": 1,
         "config": {
-          "rules": [
-            {
-              "src_cidr": "0.0.0.0/0",
-              "dst_cidr": "192.168.1.53/32",
-              "action": "pass"
-            }
-          ],
-          "default_action": "drop",
+          "label": "speedometer",
+          "reset_on_read": false,
           "output_mode": "first"
         },
         "position": {
-          "x": 40.58400000000012,
-          "y": 66.63200000000012
-        }
-      },
-      {
-        "id": "node_1774989478809_5",
-        "type": "pcap_recorder",
-        "label": "PCAP Recorder",
-        "core": 1,
-        "config": {
-          "output_path": "/tmp/capture_src.pcap",
-          "max_file_size_mb": 512,
-          "snaplen": 65535,
-          "output_mode": "first"
-        },
-        "position": {
-          "x": 298.46400000000006,
-          "y": -66.15199999999996
-        }
-      },
-      {
-        "id": "node_1774989481617_6",
-        "type": "pcap_recorder",
-        "label": "PCAP Recorder",
-        "core": 1,
-        "config": {
-          "output_path": "/tmp/capture_dest.pcap",
-          "max_file_size_mb": 512,
-          "snaplen": 65535,
-          "output_mode": "first"
-        },
-        "position": {
-          "x": 312.1680000000001,
-          "y": 72.78400000000005
+          "x": 402.60000000000014,
+          "y": 85.37600000000006
         }
       }
     ],
     "edges": [
       {
-        "id": "edge_1774989388790_2",
-        "source": "node_1774989376944_0",
+        "id": "edge_1775000327818_2",
+        "source": "node_1775000316766_0",
         "source_port": 0,
-        "target": "node_1774989379327_1",
+        "target": "node_1775000320169_1",
         "target_port": 0,
         "ring": {
-          "name": "ring_node_1774989376944_0_0_node_1774989379327_1_0",
-          "size": 1024
-        }
-      },
-      {
-        "id": "edge_1774989396004_4",
-        "source": "node_1774989376944_0",
-        "source_port": 0,
-        "target": "node_1774989392171_3",
-        "target_port": 0,
-        "ring": {
-          "name": "ring_node_1774989376944_0_0_node_1774989392171_3_0",
-          "size": 1024
-        }
-      },
-      {
-        "id": "edge_1774989505085_7",
-        "source": "node_1774989392171_3",
-        "source_port": 0,
-        "target": "node_1774989481617_6",
-        "target_port": 0,
-        "ring": {
-          "name": "ring_node_1774989392171_3_0_node_1774989481617_6_0",
-          "size": 1024
-        }
-      },
-      {
-        "id": "edge_1774989508075_8",
-        "source": "node_1774989379327_1",
-        "source_port": 0,
-        "target": "node_1774989478809_5",
-        "target_port": 0,
-        "ring": {
-          "name": "ring_node_1774989379327_1_0_node_1774989478809_5_0",
+          "name": "ring_node_1775000316766_0_0_node_1775000320169_1_0",
           "size": 1024
         }
       }

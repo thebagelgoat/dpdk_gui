@@ -8,4 +8,7 @@ export const stopEngine = () => api.post("/engine/stop").then((r) => r.data);
 export const getEngineStatus = () =>
   api.get<{ state: string; graph_name: string; pid: number | null }>("/engine/status").then((r) => r.data);
 
+export const reloadNodeConfig = (nodeId: string, config: Record<string, unknown>) =>
+  api.post("/engine/reload", { node_id: nodeId, config }).then((r) => r.data);
+
 export const getSystemInfo = () => api.get("/system/").then((r) => r.data);

@@ -1,7 +1,7 @@
 export type ModuleType =
   | "nic_rx" | "nic_tx"
-  | "ip_filter" | "vlan_filter" | "port_filter" | "proto_filter"
-  | "pcap_recorder" | "counter" | "template";
+  | "ip_filter" | "vlan_filter" | "port_filter" | "protocol_filter" | "mac_filter"
+  | "pcap_recorder" | "speedometer" | "template";
 
 export interface RingConfig {
   name: string;
@@ -103,12 +103,28 @@ export const MODULE_DEFS: ModuleDefinition[] = [
     maxOutputs: 4,
   },
   {
-    type: "proto_filter",
-    label: "Proto Filter",
-    description: "Filter by EtherType or IP protocol",
+    type: "protocol_filter",
+    label: "Protocol Filter",
+    description: "Filter by IP protocol number or EtherType",
     color: "#d97706",
     defaultConfig: {
-      protocols: ["icmp", "gre"],
+      ip_protos: [17],
+      ethertypes: [],
+      action: "pass",
+      default_action: "drop",
+      output_mode: "first",
+    },
+    maxInputs: 1,
+    maxOutputs: 4,
+  },
+  {
+    type: "mac_filter",
+    label: "MAC Filter",
+    description: "Filter by source or destination MAC address",
+    color: "#d97706",
+    defaultConfig: {
+      addresses: [],
+      match_field: "src",
       action: "pass",
       default_action: "drop",
       output_mode: "first",
@@ -126,11 +142,11 @@ export const MODULE_DEFS: ModuleDefinition[] = [
     maxOutputs: 4,
   },
   {
-    type: "counter",
-    label: "Counter",
-    description: "Count packets and bytes",
+    type: "speedometer",
+    label: "Speedometer",
+    description: "Measure packet and byte throughput",
     color: "#6b7280",
-    defaultConfig: { label: "counter", reset_on_read: false, output_mode: "first" },
+    defaultConfig: { label: "speedometer", reset_on_read: false, output_mode: "first" },
     maxInputs: 1,
     maxOutputs: 4,
   },

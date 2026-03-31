@@ -5,6 +5,8 @@ export interface NodeStats {
   bytes_processed: number;
   core_id: number;
   pps: number;
+  bps: number;
+  rule_hits?: number[];
 }
 
 export interface RingStats {
@@ -12,6 +14,7 @@ export interface RingStats {
   capacity: number;
   used: number;
   fill_pct: number;
+  peak_fill_pct: number;
 }
 
 export interface StatsMessage {

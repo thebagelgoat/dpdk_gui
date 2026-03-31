@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useGraphStore } from "../../store/graphStore";
 import { useUIStore } from "../../store/uiStore";
+import { useEngineStore } from "../../store/engineStore";
+import { reloadNodeConfig } from "../../api/engine";
 
 // ─── Field schema ───────────────────────────────────────────────────────────
 
@@ -48,11 +50,19 @@ const CONFIG_SCHEMA: Record<string, FieldDef[]> = {
     { type: "select",      key: "action",   label: "Action",   options: ["pass", "drop"] },
     ...OUTPUT_MODE_FIELDS,
   ],
-  proto_filter: [
-    { type: "text",   key: "protocols",      label: "Protocols (comma-separated)",
-      placeholder: "icmp, gre, ospf, arp, ipv6…" },
-    { type: "select", key: "action",         label: "Action on match",   options: ["pass", "drop"] },
-    { type: "select", key: "default_action", label: "Default action",    options: ["pass", "drop"] },
+  protocol_filter: [
+    { type: "number-list", key: "ip_protos",  label: "IP Protocol numbers (e.g. 17=UDP, 6=TCP, 1=ICMP)" },
+    { type: "number-list", key: "ethertypes", label: "EtherTypes as integers (e.g. 2048=IPv4, 34525=IPv6)" },
+    { type: "select",      key: "action",         label: "Action on match",  options: ["pass", "drop"] },
+    { type: "select",      key: "default_action", label: "Default action",   options: ["pass", "drop"] },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  mac_filter: [
+    { type: "text",   key: "addresses",      label: "MAC addresses (comma-separated)",
+      placeholder: "aa:bb:cc:dd:ee:ff, 11:22:33:44:55:66" },
+    { type: "select", key: "match_field",    label: "Match field",      options: ["src", "dst", "either"] },
+    { type: "select", key: "action",         label: "Action on match",  options: ["pass", "drop"] },
+    { type: "select", key: "default_action", label: "Default action",   options: ["pass", "drop"] },
     ...OUTPUT_MODE_FIELDS,
   ],
   pcap_recorder: [
@@ -61,8 +71,8 @@ const CONFIG_SCHEMA: Record<string, FieldDef[]> = {
     { type: "number", key: "snaplen",          label: "Snap Length",         min: 64, max: 65535 },
     ...OUTPUT_MODE_FIELDS,
   ],
-  counter: [
-    { type: "text",   key: "label",         label: "Counter Label", placeholder: "counter" },
+  speedometer: [
+    { type: "text",   key: "label",         label: "Label", placeholder: "speedometer" },
     { type: "toggle", key: "reset_on_read", label: "Reset on read" },
     ...OUTPUT_MODE_FIELDS,
   ],
@@ -78,9 +88,11 @@ const CONFIG_SCHEMA: Record<string, FieldDef[]> = {
 function IpRuleEditor({
   rules,
   onChange,
+  hits,
 }: {
   rules: { src_cidr: string; dst_cidr: string; action: string }[];
   onChange: (r: typeof rules) => void;
+  hits?: number[];
 }) {
   const update = (idx: number, key: string, val: string) => {
     const next = rules.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
@@ -130,6 +142,11 @@ function IpRuleEditor({
               <option value="pass">pass</option>
               <option value="drop">drop</option>
             </select>
+            {hits && hits[i] !== undefined && (
+              <span style={{ fontSize: 10, color: "#34d399", whiteSpace: "nowrap", minWidth: 40, textAlign: "right" }}>
+                {hits[i].toLocaleString()}
+              </span>
+            )}
             <button
               onClick={() => remove(i)}
               style={{ background: "#3f1c1c", border: "1px solid #7f1d1d", borderRadius: 3, color: "#f87171", cursor: "pointer", padding: "2px 7px", fontSize: 12 }}
@@ -151,16 +168,23 @@ function IpRuleEditor({
 export default function NodeConfigPanel() {
   const { selectedNodeId, setSelectedNode } = useUIStore();
   const { nodes, updateNodeConfig, updateNodeLabel } = useGraphStore();
+  const engineStats = useEngineStore((s) => s.stats);
+  const isRunning = useEngineStore((s) => s.status === "running");
 
   const node = nodes.find((n) => n.id === selectedNodeId);
   const moduleType = node?.data.moduleType as string;
   const schema = CONFIG_SCHEMA[moduleType] ?? [];
+
+  // Rule hit counts for this node (from live stats)
+  const nodeStats = engineStats?.nodes.find((n) => n.id === selectedNodeId);
+  const ruleHits = nodeStats?.rule_hits;
 
   const [fields, setFields] = useState<Record<string, unknown>>({});
   const [label, setLabel] = useState("");
   const [showRaw, setShowRaw] = useState(false);
   const [rawText, setRawText] = useState("");
   const [error, setError] = useState("");
+  const [liveMsg, setLiveMsg] = useState("");
 
   useEffect(() => {
     if (node) {
@@ -200,6 +224,20 @@ export default function NodeConfigPanel() {
       setError("");
     } catch (e) {
       setError("Invalid JSON: " + (e as Error).message);
+    }
+  };
+
+  const handleApplyLive = async () => {
+    try {
+      const cfg = showRaw ? JSON.parse(rawText) : fields;
+      updateNodeConfig(node.id, cfg);
+      updateNodeLabel(node.id, label);
+      await reloadNodeConfig(node.id, cfg);
+      setLiveMsg("Live!");
+      setTimeout(() => setLiveMsg(""), 2000);
+    } catch (e) {
+      setLiveMsg("Failed");
+      setTimeout(() => setLiveMsg(""), 3000);
     }
   };
 
@@ -254,7 +292,7 @@ export default function NodeConfigPanel() {
           onChange={(e) => {
             const raw = e.target.value;
             // If the original value was an array, keep it as an array
-            if (Array.isArray(val) || f.key === "protocols") {
+            if (Array.isArray(val) || f.key === "protocols" || f.key === "addresses") {
               setField(f.key, raw.split(",").map((s) => s.trim()).filter(Boolean));
             } else {
               setField(f.key, raw);
@@ -285,10 +323,14 @@ export default function NodeConfigPanel() {
     if (f.type === "ip-rules") {
       const rules = (val as any[]) ?? [];
       return (
-        <IpRuleEditor
-          rules={rules}
-          onChange={(r) => setField(f.key, r)}
-        />
+        <>
+          <IpRuleEditor rules={rules} onChange={(r) => setField(f.key, r)} hits={ruleHits} />
+          {ruleHits && ruleHits.length > rules.length && (
+            <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>
+              Default action hits: {ruleHits[rules.length].toLocaleString()}
+            </div>
+          )}
+        </>
       );
     }
     return null;
@@ -384,11 +426,39 @@ export default function NodeConfigPanel() {
           </div>
         )}
 
+        {/* Match count for port_filter / protocol_filter */}
+        {isRunning && ruleHits && ruleHits[0] !== undefined &&
+          (moduleType === "port_filter" || moduleType === "protocol_filter") && (
+          <div style={{ fontSize: 11, color: "#34d399", marginBottom: 8 }}>
+            Matches: {ruleHits[0].toLocaleString()}
+          </div>
+        )}
+
         {error && <div style={{ color: "#f87171", fontSize: 11, marginBottom: 8 }}>{error}</div>}
 
-        <button onClick={handleApply} style={btnPrimary}>
-          Apply
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={handleApply} style={{ ...btnPrimary, flex: 1 }}>
+            Apply
+          </button>
+          {isRunning && (
+            <button
+              onClick={handleApplyLive}
+              style={{
+                flex: 1,
+                background: "#166534",
+                border: "1px solid #15803d",
+                borderRadius: 4,
+                color: liveMsg === "Failed" ? "#f87171" : liveMsg ? "#4ade80" : "#86efac",
+                padding: "8px",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {liveMsg || "Apply Live"}
+            </button>
+          )}
+        </div>
 
         {/* Advanced toggle */}
         <div style={{ marginTop: 10, textAlign: "center" }}>

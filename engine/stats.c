@@ -14,14 +14,21 @@ static pipeline_t     *s_pipeline = NULL;
 
 /* Previous values for delta calculations */
 static uint64_t s_prev_pkts[MAX_STAT_NODES];
+static uint64_t s_prev_bytes[MAX_STAT_NODES];
 static uint64_t s_prev_busy[MAX_STAT_NODES];
 static uint64_t s_prev_idle[MAX_STAT_NODES];
+/* EWMA state for smoothed pps/bps (3-second time constant) */
+static double   s_pps_smooth[MAX_STAT_NODES];
+static double   s_bps_smooth[MAX_STAT_NODES];
 
 void stats_init(pipeline_t *pipeline) {
     memset(&g_latest_stats, 0, sizeof(g_latest_stats));
-    memset(s_prev_pkts, 0, sizeof(s_prev_pkts));
-    memset(s_prev_busy, 0, sizeof(s_prev_busy));
-    memset(s_prev_idle, 0, sizeof(s_prev_idle));
+    memset(s_prev_pkts,   0, sizeof(s_prev_pkts));
+    memset(s_prev_bytes,  0, sizeof(s_prev_bytes));
+    memset(s_prev_busy,   0, sizeof(s_prev_busy));
+    memset(s_prev_idle,   0, sizeof(s_prev_idle));
+    memset(s_pps_smooth,  0, sizeof(s_pps_smooth));
+    memset(s_bps_smooth,  0, sizeof(s_bps_smooth));
     s_pipeline = pipeline;
 }
 
@@ -60,9 +67,24 @@ void stats_collect(pipeline_t *pipeline, stats_snapshot_t *snap) {
         s->bytes_processed= atomic_load_explicit(&n->bytes_processed, memory_order_relaxed);
         s->core_id        = n->core_id;
 
-        uint64_t delta = s->pkts_processed - s_prev_pkts[i];
-        s->pps = (double)delta / dt;
-        s_prev_pkts[i] = s->pkts_processed;
+        uint64_t delta_pkts  = s->pkts_processed  - s_prev_pkts[i];
+        uint64_t delta_bytes = s->bytes_processed - s_prev_bytes[i];
+        s_prev_pkts[i]  = s->pkts_processed;
+        s_prev_bytes[i] = s->bytes_processed;
+        /* Exponential weighted moving average — 3-second time constant */
+        double alpha = dt / 3.0;
+        if (alpha > 1.0) alpha = 1.0;
+        double instant_pps = (double)delta_pkts  / dt;
+        double instant_bps = (double)delta_bytes / dt;
+        s_pps_smooth[i] += alpha * (instant_pps - s_pps_smooth[i]);
+        s_bps_smooth[i] += alpha * (instant_bps - s_bps_smooth[i]);
+        s->pps = s_pps_smooth[i];
+        s->bps = s_bps_smooth[i];
+
+        /* Per-rule hit counters */
+        s->n_rule_counters = n->n_rule_counters;
+        for (int j = 0; j < n->n_rule_counters && j < MAX_RULE_COUNTERS; j++)
+            s->rule_hits[j] = atomic_load_explicit(&n->rule_hits[j], memory_order_relaxed);
 
         /* Lcore utilization: delta busy / delta total over the last interval.
            Accumulate per-core so multiple nodes on the same core add together. */
@@ -92,8 +114,10 @@ void stats_collect(pipeline_t *pipeline, stats_snapshot_t *snap) {
             s->capacity = rte_ring_get_capacity(e->ring);
             s->used     = rte_ring_count(e->ring);
             s->fill_pct = s->capacity > 0 ? (double)s->used / s->capacity * 100.0 : 0.0;
+            if (s->fill_pct > e->peak_fill_pct) e->peak_fill_pct = s->fill_pct;
+            s->peak_fill_pct = e->peak_fill_pct;
         } else {
-            s->capacity = 0; s->used = 0; s->fill_pct = 0;
+            s->capacity = 0; s->used = 0; s->fill_pct = 0; s->peak_fill_pct = 0;
         }
     }
 }

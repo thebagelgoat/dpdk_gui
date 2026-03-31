@@ -20,9 +20,10 @@ typedef enum {
     MOD_IP_FILTER,
     MOD_VLAN_FILTER,
     MOD_PORT_FILTER,
-    MOD_PROTO_FILTER,
+    MOD_PROTOCOL_FILTER,
+    MOD_MAC_FILTER,
     MOD_PCAP_RECORDER,
-    MOD_COUNTER,
+    MOD_SPEEDOMETER,
     MOD_TEMPLATE
 } module_type_t;
 
@@ -44,6 +45,7 @@ typedef struct {
     uint32_t         size;
     struct rte_ring *ring;
     int              edge_idx;
+    double           peak_fill_pct;   /* high-water mark since pipeline start */
 } ring_desc_t;
 
 /* Per-node descriptor */
@@ -76,6 +78,11 @@ typedef struct node_desc {
     /* busy/idle counters for utilization */
     _Atomic uint64_t busy_loops;
     _Atomic uint64_t idle_loops;
+
+    /* per-rule hit counters (set by modules that have named rules) */
+#define MAX_RULE_COUNTERS 64
+    _Atomic uint64_t rule_hits[MAX_RULE_COUNTERS];
+    int              n_rule_counters;
 } node_desc_t;
 
 /* Full pipeline */
@@ -94,6 +101,9 @@ extern volatile int g_running;
 
 /* Parse graph.json into pipeline_t. Returns 0 on success. */
 int parse_graph(const char *path, pipeline_t *pipeline);
+
+/* Look up the ops struct for a given module type (defined in graph.c) */
+void *get_module_ops(module_type_t type);
 
 /* Free all heap-allocated module configs */
 void pipeline_free(pipeline_t *pipeline);

@@ -20,6 +20,10 @@ GRAPHS_DIR = Path(__file__).parent.parent / "graphs"
 class StartRequest(BaseModel):
     graph_name: str
 
+class ReloadConfigRequest(BaseModel):
+    node_id: str
+    config: dict
+
 
 @router.post("/start")
 async def start_engine(req: StartRequest) -> dict:
@@ -68,8 +72,19 @@ async def stop_engine() -> dict:
     return {"status": "stopped"}
 
 
+@router.post("/reload")
+async def reload_node_config(req: ReloadConfigRequest) -> dict:
+    if not engine_manager.is_running():
+        raise HTTPException(status_code=409, detail="Engine not running")
+    ok = await engine_manager.reload_node_config(req.node_id, req.config)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Reload failed — node not found or config invalid")
+    return {"status": "ok"}
+
+
 @router.get("/status")
 async def engine_status() -> dict:
+    engine_manager.is_running()  # updates state if process has exited
     pid = engine_manager.proc.pid if engine_manager.proc else None
     return {
         "state": engine_manager.state,

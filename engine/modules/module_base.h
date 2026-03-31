@@ -25,6 +25,8 @@ typedef struct {
     int  (*process)(node_desc_t *node);
     void (*destroy)(node_desc_t *node);
     void *(*parse_config)(json_t *cfg_json);
+    /* Optional: return the number of rule_hits slots this module uses. NULL = 0. */
+    int  (*rule_count)(void *cfg);
 } module_ops_t;
 
 /* One entry per module type, indexed by module_type_t */
@@ -41,7 +43,8 @@ extern module_ops_t nic_tx_ops;
 extern module_ops_t ip_filter_ops;
 extern module_ops_t vlan_filter_ops;
 extern module_ops_t port_filter_ops;
-extern module_ops_t proto_filter_ops;
+extern module_ops_t protocol_filter_ops;
+extern module_ops_t mac_filter_ops;
 extern module_ops_t pcap_recorder_ops;
 extern module_ops_t counter_ops;
 extern module_ops_t template_ops;

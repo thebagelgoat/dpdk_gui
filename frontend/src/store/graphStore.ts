@@ -4,11 +4,19 @@ import type { Node, Edge, NodeChange, EdgeChange, Connection } from "reactflow";
 import type { GraphSchema, ModuleType } from "../types/graph";
 import { MODULE_DEFS } from "../types/graph";
 
+const MAX_HISTORY = 50;
+
+interface GraphState {
+  nodes: Node[];
+  edges: Edge[];
+}
+
 interface GraphStore {
   nodes: Node[];
   edges: Edge[];
   graphName: string;
   isDirty: boolean;
+  nodeErrors: Record<string, string>;
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
   onNodesChange: (changes: NodeChange[]) => void;
@@ -18,32 +26,64 @@ interface GraphStore {
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
   updateNodeLabel: (nodeId: string, label: string) => void;
   setGraphName: (name: string) => void;
+  markSaved: () => void;
+  setNodeErrors: (errors: Record<string, string>) => void;
+  clearNodeErrors: () => void;
   loadGraph: (schema: GraphSchema) => void;
   toGraphSchema: () => GraphSchema;
   clearGraph: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 }
 
 let nodeCounter = 0;
 const newId = () => `node_${Date.now()}_${nodeCounter++}`;
 const newEdgeId = () => `edge_${Date.now()}_${nodeCounter++}`;
 
+// History stacks live outside the store to avoid triggering rerenders
+let _history: GraphState[] = [];
+let _future: GraphState[] = [];
+
+function pushHistory(nodes: Node[], edges: Edge[]) {
+  _history.push({ nodes, edges });
+  if (_history.length > MAX_HISTORY) _history.shift();
+  _future = [];
+}
+
 export const useGraphStore = create<GraphStore>((set, get) => ({
   nodes: [],
   edges: [],
   graphName: "untitled",
   isDirty: false,
+  nodeErrors: {},
 
-  setNodes: (nodes) => set({ nodes, isDirty: true }),
-  setEdges: (edges) => set({ edges, isDirty: true }),
+  setNodes: (nodes) => {
+    pushHistory(get().nodes, get().edges);
+    set({ nodes, isDirty: true });
+  },
+  setEdges: (edges) => {
+    pushHistory(get().nodes, get().edges);
+    set({ edges, isDirty: true });
+  },
 
-  onNodesChange: (changes) =>
-    set((s) => ({ nodes: applyNodeChanges(changes, s.nodes), isDirty: true })),
+  onNodesChange: (changes) => {
+    // Only push history for significant changes (not selection/position drags)
+    const significant = changes.some((c) => c.type === "remove");
+    if (significant) pushHistory(get().nodes, get().edges);
+    set((s) => ({ nodes: applyNodeChanges(changes, s.nodes), isDirty: true }));
+  },
 
-  onEdgesChange: (changes) =>
-    set((s) => ({ edges: applyEdgeChanges(changes, s.edges), isDirty: true })),
+  onEdgesChange: (changes) => {
+    const significant = changes.some((c) => c.type === "remove");
+    if (significant) pushHistory(get().nodes, get().edges);
+    set((s) => ({ edges: applyEdgeChanges(changes, s.edges), isDirty: true }));
+  },
 
   onConnect: (connection) => {
     if (!connection.source || !connection.target) return;
+    pushHistory(get().nodes, get().edges);
     const edge: Edge = {
       id: newEdgeId(),
       source: connection.source,
@@ -59,6 +99,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   addNode: (type, position) => {
     const def = MODULE_DEFS.find((d) => d.type === type);
     if (!def) return;
+    pushHistory(get().nodes, get().edges);
     const id = newId();
     const node: Node = {
       id,
@@ -76,13 +117,15 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     set((s) => ({ nodes: [...s.nodes, node], isDirty: true }));
   },
 
-  updateNodeConfig: (nodeId, config) =>
+  updateNodeConfig: (nodeId, config) => {
+    pushHistory(get().nodes, get().edges);
     set((s) => ({
       nodes: s.nodes.map((n) =>
         n.id === nodeId ? { ...n, data: { ...n.data, config } } : n
       ),
       isDirty: true,
-    })),
+    }));
+  },
 
   updateNodeLabel: (nodeId, label) =>
     set((s) => ({
@@ -94,7 +137,14 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   setGraphName: (name) => set({ graphName: name }),
 
+  markSaved: () => set({ isDirty: false }),
+
+  setNodeErrors: (errors) => set({ nodeErrors: errors }),
+  clearNodeErrors: () => set({ nodeErrors: {} }),
+
   loadGraph: (schema) => {
+    _history = [];
+    _future = [];
     const nodes: Node[] = schema.graph.nodes.map((n) => {
       const def = MODULE_DEFS.find((d) => d.type === n.type);
       return {
@@ -122,7 +172,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       data: { ring: e.ring },
     }));
 
-    set({ nodes, edges, graphName: schema.name, isDirty: false });
+    set({ nodes, edges, graphName: schema.name, isDirty: false, nodeErrors: {} });
   },
 
   toGraphSchema: (): GraphSchema => {
@@ -155,5 +205,26 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     };
   },
 
-  clearGraph: () => set({ nodes: [], edges: [], isDirty: false }),
+  clearGraph: () => {
+    _history = [];
+    _future = [];
+    set({ nodes: [], edges: [], isDirty: false, nodeErrors: {} });
+  },
+
+  undo: () => {
+    const prev = _history.pop();
+    if (!prev) return;
+    _future.push({ nodes: get().nodes, edges: get().edges });
+    set({ nodes: prev.nodes, edges: prev.edges, isDirty: true });
+  },
+
+  redo: () => {
+    const next = _future.pop();
+    if (!next) return;
+    _history.push({ nodes: get().nodes, edges: get().edges });
+    set({ nodes: next.nodes, edges: next.edges, isDirty: true });
+  },
+
+  canUndo: () => _history.length > 0,
+  canRedo: () => _future.length > 0,
 }));

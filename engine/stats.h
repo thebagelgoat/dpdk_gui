@@ -15,7 +15,10 @@ typedef struct {
     uint64_t pkts_dropped;
     uint64_t bytes_processed;
     uint32_t core_id;
-    double   pps;      /* packets per second (rolling) */
+    double   pps;      /* packets per second (rolling EWMA) */
+    double   bps;      /* bytes per second (rolling EWMA) */
+    uint64_t rule_hits[MAX_RULE_COUNTERS];
+    int      n_rule_counters;
 } node_stats_snap_t;
 
 typedef struct {
@@ -23,6 +26,7 @@ typedef struct {
     uint32_t capacity;
     uint32_t used;
     double   fill_pct;
+    double   peak_fill_pct;   /* high-water mark since pipeline start */
 } ring_stats_snap_t;
 
 typedef struct {
