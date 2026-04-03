@@ -24,7 +24,10 @@ typedef enum {
     MOD_MAC_FILTER,
     MOD_PCAP_RECORDER,
     MOD_SPEEDOMETER,
-    MOD_TEMPLATE
+    MOD_TEMPLATE,
+    MOD_PCAP_SOURCE,
+    MOD_PKT_GEN,
+    MOD_PACKET_INSPECTOR
 } module_type_t;
 
 /* How a node distributes packets across its output rings */

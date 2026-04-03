@@ -19,7 +19,10 @@ SRCS := main.c \
         modules/mac_filter.c \
         modules/pcap_recorder.c \
         modules/counter.c \
-        modules/template.c
+        modules/template.c \
+        modules/pcap_source.c \
+        modules/pkt_gen.c \
+        modules/packet_inspector.c
 
 OBJS    := $(SRCS:.c=.o)
 TARGET  := dpdk_engine

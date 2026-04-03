@@ -24,12 +24,13 @@ ModuleType = Literal[
     "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter",
     "protocol_filter", "mac_filter",
     "pcap_recorder", "speedometer", "template",
+    "pcap_source", "pkt_gen", "packet_inspector",
 ]
 
 HEAVY_TYPES = {
     "nic_rx", "nic_tx", "ip_filter", "vlan_filter", "port_filter",
     "protocol_filter", "mac_filter",
-    "pcap_recorder",
+    "pcap_recorder", "pcap_source", "pkt_gen", "packet_inspector",
 }
 LIGHTWEIGHT_TYPES = {"speedometer", "template"}
 

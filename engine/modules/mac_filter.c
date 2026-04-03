@@ -68,44 +68,47 @@ static inline int mac_in_list(mac_filter_cfg_t *c, const struct rte_ether_addr *
 
 static int mac_filter_process(node_desc_t *node) {
     mac_filter_cfg_t *c = node->module_cfg;
-    if (!node->input_rings[0] || !node->input_rings[0]->ring) return 0;
+    int total = 0;
+    for (int ri = 0; ri < node->n_inputs; ri++) {
+        if (!node->input_rings[ri] || !node->input_rings[ri]->ring) continue;
+        struct rte_mbuf *pkts[BURST_SIZE];
+        unsigned n = rte_ring_dequeue_burst(node->input_rings[ri]->ring,
+                                             (void **)pkts, BURST_SIZE, NULL);
+        if (n == 0) continue;
 
-    struct rte_mbuf *pkts[BURST_SIZE];
-    unsigned n = rte_ring_dequeue_burst(node->input_rings[0]->ring,
-                                         (void **)pkts, BURST_SIZE, NULL);
-    if (n == 0) return 0;
+        struct rte_mbuf *pass[BURST_SIZE];
+        unsigned n_pass = 0;
+        uint64_t bytes  = 0;
 
-    struct rte_mbuf *pass[BURST_SIZE];
-    unsigned n_pass = 0;
-    uint64_t bytes  = 0;
+        for (unsigned i = 0; i < n; i++) {
+            struct rte_ether_hdr *eth = rte_pktmbuf_mtod(pkts[i], struct rte_ether_hdr *);
 
-    for (unsigned i = 0; i < n; i++) {
-        struct rte_ether_hdr *eth = rte_pktmbuf_mtod(pkts[i], struct rte_ether_hdr *);
+            int matched = 0;
+            switch (c->match_field) {
+            case MATCH_SRC:    matched = mac_in_list(c, &eth->src_addr);  break;
+            case MATCH_DST:    matched = mac_in_list(c, &eth->dst_addr);  break;
+            case MATCH_EITHER: matched = mac_in_list(c, &eth->src_addr) ||
+                                         mac_in_list(c, &eth->dst_addr);  break;
+            }
 
-        int matched = 0;
-        switch (c->match_field) {
-        case MATCH_SRC:    matched = mac_in_list(c, &eth->src_addr);  break;
-        case MATCH_DST:    matched = mac_in_list(c, &eth->dst_addr);  break;
-        case MATCH_EITHER: matched = mac_in_list(c, &eth->src_addr) ||
-                                     mac_in_list(c, &eth->dst_addr);  break;
+            filter_action_t verdict = matched ? c->action : c->default_action;
+            if (verdict == ACTION_PASS) {
+                bytes += pkts[i]->pkt_len;
+                pass[n_pass++] = pkts[i];
+            } else {
+                rte_pktmbuf_free(pkts[i]);
+                atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
+            }
         }
 
-        filter_action_t verdict = matched ? c->action : c->default_action;
-        if (verdict == ACTION_PASS) {
-            bytes += pkts[i]->pkt_len;
-            pass[n_pass++] = pkts[i];
-        } else {
-            rte_pktmbuf_free(pkts[i]);
-            atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
+        if (n_pass > 0) {
+            unsigned enq = node_out(node, pass, n_pass);
+            atomic_fetch_add_explicit(&node->pkts_processed,  enq,   memory_order_relaxed);
+            atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
         }
+        total += n;
     }
-
-    if (n_pass > 0) {
-        unsigned enq = node_out(node, pass, n_pass);
-        atomic_fetch_add_explicit(&node->pkts_processed,  enq,   memory_order_relaxed);
-        atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
-    }
-    return n;
+    return total;
 }
 
 module_ops_t mac_filter_ops = {

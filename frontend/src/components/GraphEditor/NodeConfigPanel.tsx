@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useGraphStore } from "../../store/graphStore";
 import { useUIStore } from "../../store/uiStore";
 import { useEngineStore } from "../../store/engineStore";
 import { reloadNodeConfig } from "../../api/engine";
+import { InspectorSample } from "../../types/stats";
 
 // ─── Field schema ───────────────────────────────────────────────────────────
 
@@ -81,6 +82,139 @@ const CONFIG_SCHEMA: Record<string, FieldDef[]> = {
     { type: "toggle", key: "pass_through", label: "Pass-through" },
     ...OUTPUT_MODE_FIELDS,
   ],
+  pcap_source: [
+    { type: "text",   key: "file_path",        label: "PCAP File Path",              placeholder: "/tmp/capture.pcap" },
+    { type: "number", key: "speed_multiplier",  label: "Speed Multiplier (0=full)",   min: 0, max: 1000, step: 0.1 },
+    { type: "toggle", key: "loop",              label: "Loop Playback" },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  pkt_gen: [
+    { type: "number", key: "rate_pps",      label: "Rate PPS (0=unlimited)",  min: 0, max: 100000000 },
+    { type: "text",   key: "src_ip",        label: "Source IP (CIDR)",        placeholder: "10.0.0.1/32" },
+    { type: "text",   key: "dst_ip",        label: "Dest IP (CIDR)",          placeholder: "192.168.1.1/32" },
+    { type: "text",   key: "src_mac",       label: "Source MAC",              placeholder: "02:00:00:00:00:01" },
+    { type: "text",   key: "dst_mac",       label: "Dest MAC",                placeholder: "ff:ff:ff:ff:ff:ff" },
+    { type: "select", key: "protocol",      label: "Protocol",                options: ["udp", "tcp", "icmp"] },
+    { type: "number", key: "src_port_min",  label: "Src Port Min",            min: 1, max: 65535 },
+    { type: "number", key: "src_port_max",  label: "Src Port Max",            min: 1, max: 65535 },
+    { type: "number", key: "dst_port_min",  label: "Dst Port Min",            min: 1, max: 65535 },
+    { type: "number", key: "dst_port_max",  label: "Dst Port Max",            min: 1, max: 65535 },
+    { type: "number", key: "pkt_size",      label: "Packet Size (bytes)",     min: 60, max: 1514 },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+  packet_inspector: [
+    { type: "number", key: "sample_every_n", label: "Sample every Nth packet", min: 1, max: 1000 },
+    ...OUTPUT_MODE_FIELDS,
+  ],
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const formatIP = (n: number): string =>
+  `${(n >>> 24) & 0xff}.${(n >>> 16) & 0xff}.${(n >>> 8) & 0xff}.${n & 0xff}`;
+
+const PROTO_LABELS: Record<number, { label: string; color: string }> = {
+  1:  { label: "ICMP",  color: "#f59e0b" },
+  6:  { label: "TCP",   color: "#3b82f6" },
+  17: { label: "UDP",   color: "#22c55e" },
+};
+
+const ETH_LABELS: Record<number, string> = {
+  0x0800: "IPv4",
+  0x86DD: "IPv6",
+  0x0806: "ARP",
+  0x8100: "VLAN",
+};
+
+const TCP_FLAG_NAMES = ["FIN","SYN","RST","PSH","ACK","URG"];
+const formatTcpFlags = (f: number): string =>
+  TCP_FLAG_NAMES.filter((_, i) => f & (1 << i)).join("+") || "—";
+
+function InspectorTable({ samples }: { samples: InspectorSample[] }) {
+  /* Show newest first, cap at 100 rows */
+  const rows = [...samples].reverse().slice(0, 100);
+  if (rows.length === 0) {
+    return (
+      <div style={{ fontSize: 11, color: "#475569", fontStyle: "italic", padding: "8px 0" }}>
+        No packets captured yet…
+      </div>
+    );
+  }
+  const firstTs = rows[rows.length - 1]?.ts_us ?? 0;
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+        <thead>
+          <tr style={{ color: "#475569", textAlign: "left" }}>
+            <th style={thStyle}>Time (ms)</th>
+            <th style={thStyle}>Proto</th>
+            <th style={thStyle}>Source</th>
+            <th style={thStyle}>Destination</th>
+            <th style={thStyle}>Len</th>
+            <th style={thStyle}>Info</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((s, i) => {
+            const protoInfo = PROTO_LABELS[s.ip_proto];
+            const isIP = s.eth_type === 0x0800 || s.eth_type === 0x86DD;
+            const proto = isIP
+              ? (protoInfo ? protoInfo.label : `IP/${s.ip_proto}`)
+              : (ETH_LABELS[s.eth_type] ?? `0x${s.eth_type.toString(16)}`);
+            const protoColor = protoInfo?.color ?? "#94a3b8";
+            const elapsed = ((s.ts_us - firstTs) / 1000).toFixed(1);
+            const src = isIP
+              ? `${formatIP(s.src_ip)}${s.src_port ? `:${s.src_port}` : ""}`
+              : "—";
+            const dst = isIP
+              ? `${formatIP(s.dst_ip)}${s.dst_port ? `:${s.dst_port}` : ""}`
+              : "—";
+            const info = s.ip_proto === 6 ? formatTcpFlags(s.tcp_flags) : "—";
+            return (
+              <tr key={i} style={{ borderBottom: "1px solid #13151f" }}>
+                <td style={tdStyle}>{elapsed}</td>
+                <td style={tdStyle}>
+                  <span style={{
+                    background: protoColor + "22",
+                    color: protoColor,
+                    borderRadius: 3,
+                    padding: "1px 4px",
+                    fontWeight: 700,
+                    fontSize: 9,
+                  }}>
+                    {proto}
+                  </span>
+                </td>
+                <td style={{ ...tdStyle, fontFamily: "monospace" }}>{src}</td>
+                <td style={{ ...tdStyle, fontFamily: "monospace" }}>{dst}</td>
+                <td style={tdStyle}>{s.pkt_len}</td>
+                <td style={{ ...tdStyle, color: "#64748b" }}>{info}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const thStyle: React.CSSProperties = {
+  padding: "3px 4px",
+  borderBottom: "1px solid #2d3748",
+  fontWeight: 700,
+  fontSize: 9,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+  whiteSpace: "nowrap",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "3px 4px",
+  color: "#cbd5e0",
+  whiteSpace: "nowrap",
+  maxWidth: 90,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
 };
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -163,6 +297,49 @@ function IpRuleEditor({
   );
 }
 
+// ─── Number-list input (local string state so commas can be typed freely) ────
+
+function NumberListInput({
+  value,
+  onChange,
+  placeholder = "e.g. 80, 443",
+  style,
+}: {
+  value: number[];
+  onChange: (v: number[]) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}) {
+  const [text, setText] = useState(value.join(", "));
+
+  // If the external value changes (e.g. node selection changes), sync local text
+  const prevValueRef = useRef(value);
+  useEffect(() => {
+    if (prevValueRef.current !== value) {
+      prevValueRef.current = value;
+      setText(value.join(", "));
+    }
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      value={text}
+      placeholder={placeholder}
+      style={style}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => {
+        const parsed = text
+          .split(",")
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n));
+        onChange(parsed);
+        setText(parsed.join(", "));
+      }}
+    />
+  );
+}
+
 // ─── Main panel ──────────────────────────────────────────────────────────────
 
 export default function NodeConfigPanel() {
@@ -170,6 +347,26 @@ export default function NodeConfigPanel() {
   const { nodes, updateNodeConfig, updateNodeLabel } = useGraphStore();
   const engineStats = useEngineStore((s) => s.stats);
   const isRunning = useEngineStore((s) => s.status === "running");
+
+  const [panelWidth, setPanelWidth] = useState(290);
+  const dragStart = useRef<{ x: number; w: number } | null>(null);
+
+  const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragStart.current = { x: e.clientX, w: panelWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragStart.current) return;
+      const delta = dragStart.current.x - ev.clientX;
+      setPanelWidth(Math.max(220, Math.min(600, dragStart.current.w + delta)));
+    };
+    const onUp = () => {
+      dragStart.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [panelWidth]);
 
   const node = nodes.find((n) => n.id === selectedNodeId);
   const moduleType = node?.data.moduleType as string;
@@ -305,17 +502,9 @@ export default function NodeConfigPanel() {
     if (f.type === "number-list") {
       const list = (val as number[] | undefined) ?? [];
       return (
-        <input
-          type="text"
-          value={list.join(", ")}
-          onChange={(e) => {
-            const parsed = e.target.value
-              .split(",")
-              .map((s) => parseInt(s.trim(), 10))
-              .filter((n) => !isNaN(n));
-            setField(f.key, parsed);
-          }}
-          placeholder="e.g. 80, 443"
+        <NumberListInput
+          value={list}
+          onChange={(parsed) => setField(f.key, parsed)}
           style={inputStyle}
         />
       );
@@ -339,15 +528,31 @@ export default function NodeConfigPanel() {
   return (
     <div
       style={{
-        width: 290,
+        width: panelWidth,
         background: "#0b0d18",
         borderLeft: "1px solid #2d3748",
         display: "flex",
-        flexDirection: "column",
+        flexDirection: "row",
         flexShrink: 0,
         overflow: "hidden",
       }}
     >
+      {/* Drag handle — left edge */}
+      <div
+        onMouseDown={onResizeMouseDown}
+        style={{
+          width: 5,
+          cursor: "ew-resize",
+          background: "transparent",
+          flexShrink: 0,
+          transition: "background 0.15s",
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "#2d3748"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+        title="Drag to resize"
+      />
+      {/* Panel content */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
       {/* Header */}
       <div
         style={{
@@ -473,7 +678,21 @@ export default function NodeConfigPanel() {
             {showRaw ? "Back to form" : "Advanced (raw JSON)"}
           </button>
         </div>
+
+        {/* Live packet inspector table */}
+        {moduleType === "packet_inspector" && isRunning && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+              letterSpacing: 1, color: "#475569", marginBottom: 6,
+            }}>
+              Live Packets
+            </div>
+            <InspectorTable samples={nodeStats?.samples ?? []} />
+          </div>
+        )}
       </div>
+      </div>{/* end inner-content */}
     </div>
   );
 }

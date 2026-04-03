@@ -54,72 +54,68 @@ static void *protocol_filter_parse(json_t *cfg) {
 
 static int protocol_filter_process(node_desc_t *node) {
     protocol_filter_cfg_t *c = node->module_cfg;
-    if (!node->input_rings[0] || !node->input_rings[0]->ring) return 0;
+    int total = 0;
+    for (int ri = 0; ri < node->n_inputs; ri++) {
+        if (!node->input_rings[ri] || !node->input_rings[ri]->ring) continue;
+        struct rte_mbuf *pkts[BURST_SIZE];
+        unsigned n = rte_ring_dequeue_burst(node->input_rings[ri]->ring,
+                                             (void **)pkts, BURST_SIZE, NULL);
+        if (n == 0) continue;
 
-    struct rte_mbuf *pkts[BURST_SIZE];
-    unsigned n = rte_ring_dequeue_burst(node->input_rings[0]->ring,
-                                         (void **)pkts, BURST_SIZE, NULL);
-    if (n == 0) return 0;
+        struct rte_mbuf *pass[BURST_SIZE];
+        unsigned n_pass = 0;
+        uint64_t bytes  = 0;
 
-    struct rte_mbuf *pass[BURST_SIZE];
-    unsigned n_pass = 0;
-    uint64_t bytes  = 0;
+        for (unsigned i = 0; i < n; i++) {
+            struct rte_ether_hdr *eth = rte_pktmbuf_mtod(pkts[i], struct rte_ether_hdr *);
+            uint16_t etype = rte_be_to_cpu_16(eth->ether_type);
 
-    for (unsigned i = 0; i < n; i++) {
-        struct rte_ether_hdr *eth = rte_pktmbuf_mtod(pkts[i], struct rte_ether_hdr *);
-        uint16_t etype = rte_be_to_cpu_16(eth->ether_type);
+            uint16_t inner_etype = etype;
+            void    *l3 = (uint8_t *)eth + sizeof(*eth);
+            if (inner_etype == RTE_ETHER_TYPE_VLAN) {
+                struct rte_vlan_hdr *vh = (struct rte_vlan_hdr *)l3;
+                inner_etype = rte_be_to_cpu_16(vh->eth_proto);
+                l3 = (uint8_t *)l3 + sizeof(*vh);
+            }
 
-        /* Resolve inner ethertype past VLAN tag */
-        uint16_t inner_etype = etype;
-        void    *l3 = (uint8_t *)eth + sizeof(*eth);
-        if (inner_etype == RTE_ETHER_TYPE_VLAN) {
-            struct rte_vlan_hdr *vh = (struct rte_vlan_hdr *)l3;
-            inner_etype = rte_be_to_cpu_16(vh->eth_proto);
-            l3 = (uint8_t *)l3 + sizeof(*vh);
-        }
+            uint8_t ip_proto = 0;
+            int has_ip = 0;
+            if (inner_etype == RTE_ETHER_TYPE_IPV4) {
+                struct rte_ipv4_hdr *ip = (struct rte_ipv4_hdr *)l3;
+                ip_proto = ip->next_proto_id;
+                has_ip = 1;
+            }
 
-        /* Get IP protocol number if this is IPv4 */
-        uint8_t ip_proto = 0;
-        int has_ip = 0;
-        if (inner_etype == RTE_ETHER_TYPE_IPV4) {
-            struct rte_ipv4_hdr *ip = (struct rte_ipv4_hdr *)l3;
-            ip_proto = ip->next_proto_id;
-            has_ip = 1;
-        }
+            int matched = 0;
+            for (int j = 0; j < c->n_ethertypes && !matched; j++) {
+                if (c->ethertypes[j] == etype) matched = 1;
+            }
+            if (!matched && has_ip) {
+                for (int j = 0; j < c->n_ip_protos && !matched; j++) {
+                    if (c->ip_protos[j] == ip_proto) matched = 1;
+                }
+            }
 
-        /* Check for a match */
-        int matched = 0;
-
-        /* EtherType match */
-        for (int j = 0; j < c->n_ethertypes && !matched; j++) {
-            if (c->ethertypes[j] == etype) matched = 1;
-        }
-
-        /* IP protocol match */
-        if (!matched && has_ip) {
-            for (int j = 0; j < c->n_ip_protos && !matched; j++) {
-                if (c->ip_protos[j] == ip_proto) matched = 1;
+            if (matched)
+                atomic_fetch_add_explicit(&node->rule_hits[0], 1, memory_order_relaxed);
+            filter_action_t verdict = matched ? c->action : c->default_action;
+            if (verdict == ACTION_PASS) {
+                bytes += pkts[i]->pkt_len;
+                pass[n_pass++] = pkts[i];
+            } else {
+                rte_pktmbuf_free(pkts[i]);
+                atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
             }
         }
 
-        if (matched)
-            atomic_fetch_add_explicit(&node->rule_hits[0], 1, memory_order_relaxed);
-        filter_action_t verdict = matched ? c->action : c->default_action;
-        if (verdict == ACTION_PASS) {
-            bytes += pkts[i]->pkt_len;
-            pass[n_pass++] = pkts[i];
-        } else {
-            rte_pktmbuf_free(pkts[i]);
-            atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
+        if (n_pass > 0) {
+            unsigned enq = node_out(node, pass, n_pass);
+            atomic_fetch_add_explicit(&node->pkts_processed,  enq,   memory_order_relaxed);
+            atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
         }
+        total += n;
     }
-
-    if (n_pass > 0) {
-        unsigned enq = node_out(node, pass, n_pass);
-        atomic_fetch_add_explicit(&node->pkts_processed,  enq,   memory_order_relaxed);
-        atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
-    }
-    return n;
+    return total;
 }
 
 static int protocol_filter_rule_count(void *cfg) { (void)cfg; return 1; }

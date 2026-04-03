@@ -43,31 +43,33 @@ static int template_init(node_desc_t *node) {
 
 static int template_process(node_desc_t *node) {
     template_cfg_t *c = node->module_cfg;
-    if (!node->input_rings[0] || !node->input_rings[0]->ring) return 0;
+    int total = 0;
+    for (int ri = 0; ri < node->n_inputs; ri++) {
+        if (!node->input_rings[ri] || !node->input_rings[ri]->ring) continue;
+        struct rte_mbuf *pkts[BURST_SIZE];
+        unsigned n = rte_ring_dequeue_burst(node->input_rings[ri]->ring,
+                                             (void **)pkts, BURST_SIZE, NULL);
+        if (n == 0) continue;
 
-    struct rte_mbuf *pkts[BURST_SIZE];
-    unsigned n = rte_ring_dequeue_burst(node->input_rings[0]->ring,
-                                         (void **)pkts, BURST_SIZE, NULL);
-    if (n == 0) return 0;
+        /* TODO: add your per-packet processing logic here */
 
-    /* TODO: add your per-packet processing logic here */
-    /* Example: this module simply counts and passes through */
+        uint64_t bytes = 0;
+        unsigned processed = 0;
 
-    uint64_t bytes = 0;
-    unsigned processed = 0;
+        for (unsigned i = 0; i < n; i++) bytes += pkts[i]->pkt_len;
 
-    for (unsigned i = 0; i < n; i++) bytes += pkts[i]->pkt_len;
+        if (c->pass_through) {
+            processed = node_out(node, pkts, n);
+        } else {
+            for (unsigned i = 0; i < n; i++) rte_pktmbuf_free(pkts[i]);
+            processed = n;
+        }
 
-    if (c->pass_through) {
-        processed = node_out(node, pkts, n);
-    } else {
-        for (unsigned i = 0; i < n; i++) rte_pktmbuf_free(pkts[i]);
-        processed = n;
+        atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
+        atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
+        total += n;
     }
-
-    atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
-    atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
-    return n;
+    return total;
 }
 
 static void template_destroy(node_desc_t *node) {

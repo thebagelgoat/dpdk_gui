@@ -87,65 +87,65 @@ static int pcap_init(node_desc_t *node) {
 static int pcap_process(node_desc_t *node) {
     pcap_cfg_t *c = node->module_cfg;
     if (c->fd < 0) return 0;
-    if (!node->input_rings[0] || !node->input_rings[0]->ring) return 0;
+    int total = 0;
+    for (int ri = 0; ri < node->n_inputs; ri++) {
+        if (!node->input_rings[ri] || !node->input_rings[ri]->ring) continue;
+        struct rte_mbuf *pkts[BURST_SIZE];
+        unsigned n = rte_ring_dequeue_burst(node->input_rings[ri]->ring,
+                                             (void **)pkts, BURST_SIZE, NULL);
+        if (n == 0) continue;
 
-    struct rte_mbuf *pkts[BURST_SIZE];
-    unsigned n = rte_ring_dequeue_burst(node->input_rings[0]->ring,
-                                         (void **)pkts, BURST_SIZE, NULL);
-    if (n == 0) return 0;
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        uint64_t bytes = 0;
+        unsigned processed = 0;
+        struct rte_mbuf *pass[BURST_SIZE];
 
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    uint64_t bytes = 0;
-    unsigned processed = 0;
-    struct rte_mbuf *pass[BURST_SIZE];
+        for (unsigned i = 0; i < n; i++) {
+            uint32_t pkt_len = pkts[i]->pkt_len;
+            uint32_t cap_len = (pkt_len < c->snaplen) ? pkt_len : c->snaplen;
 
-    for (unsigned i = 0; i < n; i++) {
-        uint32_t pkt_len = pkts[i]->pkt_len;
-        uint32_t cap_len = (pkt_len < c->snaplen) ? pkt_len : c->snaplen;
+            if (c->max_file_size > 0 &&
+                c->bytes_written + sizeof(pcap_rec_hdr_t) + cap_len > c->max_file_size) {
+                /* Silently stop writing but keep passing packets */
+            } else {
+                pcap_rec_hdr_t rh = {
+                    .ts_sec  = (uint32_t)ts.tv_sec,
+                    .ts_usec = (uint32_t)(ts.tv_nsec / 1000),
+                    .incl_len = cap_len,
+                    .orig_len = pkt_len,
+                };
+                write(c->fd, &rh, sizeof(rh));
 
-        /* Check file size limit */
-        if (c->max_file_size > 0 &&
-            c->bytes_written + sizeof(pcap_rec_hdr_t) + cap_len > c->max_file_size) {
-            /* Silently stop writing but keep passing packets */
-        } else {
-            pcap_rec_hdr_t rh = {
-                .ts_sec  = (uint32_t)ts.tv_sec,
-                .ts_usec = (uint32_t)(ts.tv_nsec / 1000),
-                .incl_len = cap_len,
-                .orig_len = pkt_len,
-            };
-            write(c->fd, &rh, sizeof(rh));
-
-            /* Write packet data (handle multi-segment mbufs) */
-            struct rte_mbuf *seg = pkts[i];
-            uint32_t left = cap_len;
-            while (seg && left > 0) {
-                uint32_t seg_len = seg->data_len < left ? seg->data_len : left;
-                write(c->fd, rte_pktmbuf_mtod(seg, void *), seg_len);
-                left -= seg_len;
-                seg = seg->next;
+                struct rte_mbuf *seg = pkts[i];
+                uint32_t left = cap_len;
+                while (seg && left > 0) {
+                    uint32_t seg_len = seg->data_len < left ? seg->data_len : left;
+                    write(c->fd, rte_pktmbuf_mtod(seg, void *), seg_len);
+                    left -= seg_len;
+                    seg = seg->next;
+                }
+                c->bytes_written += sizeof(rh) + cap_len;
+                c->pkt_count++;
             }
-            c->bytes_written += sizeof(rh) + cap_len;
-            c->pkt_count++;
+
+            bytes += pkt_len;
+            pass[processed++] = pkts[i];
         }
 
-        bytes += pkt_len;
-        pass[processed++] = pkts[i];
-    }
-
-    if (processed > 0) {
-        if (node->n_outputs > 0) {
-            node_out(node, pass, processed);
-        } else {
-            /* Sink mode: no downstream — free packets without counting as drops */
-            for (unsigned i = 0; i < processed; i++) rte_pktmbuf_free(pass[i]);
+        if (processed > 0) {
+            if (node->n_outputs > 0) {
+                node_out(node, pass, processed);
+            } else {
+                for (unsigned i = 0; i < processed; i++) rte_pktmbuf_free(pass[i]);
+            }
         }
-    }
 
-    atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
-    atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
-    return n;
+        atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
+        atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
+        total += n;
+    }
+    return total;
 }
 
 static void pcap_destroy(node_desc_t *node) {

@@ -54,64 +54,67 @@ static inline int port_matches(port_filter_cfg_t *c, uint16_t src, uint16_t dst)
 
 static int port_filter_process(node_desc_t *node) {
     port_filter_cfg_t *c = node->module_cfg;
-    if (!node->input_rings[0] || !node->input_rings[0]->ring) return 0;
+    int total = 0;
+    for (int ri = 0; ri < node->n_inputs; ri++) {
+        if (!node->input_rings[ri] || !node->input_rings[ri]->ring) continue;
+        struct rte_mbuf *pkts[BURST_SIZE];
+        unsigned n = rte_ring_dequeue_burst(node->input_rings[ri]->ring,
+                                             (void **)pkts, BURST_SIZE, NULL);
+        if (n == 0) continue;
 
-    struct rte_mbuf *pkts[BURST_SIZE];
-    unsigned n = rte_ring_dequeue_burst(node->input_rings[0]->ring,
-                                         (void **)pkts, BURST_SIZE, NULL);
-    if (n == 0) return 0;
+        struct rte_mbuf *pass[BURST_SIZE];
+        unsigned n_pass = 0;
+        uint64_t bytes = 0;
 
-    struct rte_mbuf *pass[BURST_SIZE];
-    unsigned n_pass = 0;
-    uint64_t bytes = 0;
+        for (unsigned i = 0; i < n; i++) {
+            struct rte_ether_hdr *eth = rte_pktmbuf_mtod(pkts[i], struct rte_ether_hdr *);
+            uint16_t etype = rte_be_to_cpu_16(eth->ether_type);
+            int matched = 0;
 
-    for (unsigned i = 0; i < n; i++) {
-        struct rte_ether_hdr *eth = rte_pktmbuf_mtod(pkts[i], struct rte_ether_hdr *);
-        uint16_t etype = rte_be_to_cpu_16(eth->ether_type);
-        int matched = 0;
+            if (etype == RTE_ETHER_TYPE_IPV4) {
+                struct rte_ipv4_hdr *ip = (struct rte_ipv4_hdr *)(eth + 1);
+                uint8_t proto = ip->next_proto_id;
+                int proto_ok = (c->protocol == PROTO_BOTH) ||
+                               (c->protocol == PROTO_TCP && proto == 6) ||
+                               (c->protocol == PROTO_UDP && proto == 17);
 
-        if (etype == RTE_ETHER_TYPE_IPV4) {
-            struct rte_ipv4_hdr *ip = (struct rte_ipv4_hdr *)(eth + 1);
-            uint8_t proto = ip->next_proto_id;
-            int proto_ok = (c->protocol == PROTO_BOTH) ||
-                           (c->protocol == PROTO_TCP && proto == 6) ||
-                           (c->protocol == PROTO_UDP && proto == 17);
-
-            if (proto_ok) {
-                size_t ip_hdr_len = (ip->version_ihl & 0x0F) * 4;
-                void *l4 = (uint8_t *)ip + ip_hdr_len;
-                uint16_t src_port = 0, dst_port = 0;
-                if (proto == 6) {
-                    struct rte_tcp_hdr *tcp = l4;
-                    src_port = rte_be_to_cpu_16(tcp->src_port);
-                    dst_port = rte_be_to_cpu_16(tcp->dst_port);
-                } else if (proto == 17) {
-                    struct rte_udp_hdr *udp = l4;
-                    src_port = rte_be_to_cpu_16(udp->src_port);
-                    dst_port = rte_be_to_cpu_16(udp->dst_port);
+                if (proto_ok) {
+                    size_t ip_hdr_len = (ip->version_ihl & 0x0F) * 4;
+                    void *l4 = (uint8_t *)ip + ip_hdr_len;
+                    uint16_t src_port = 0, dst_port = 0;
+                    if (proto == 6) {
+                        struct rte_tcp_hdr *tcp = l4;
+                        src_port = rte_be_to_cpu_16(tcp->src_port);
+                        dst_port = rte_be_to_cpu_16(tcp->dst_port);
+                    } else if (proto == 17) {
+                        struct rte_udp_hdr *udp = l4;
+                        src_port = rte_be_to_cpu_16(udp->src_port);
+                        dst_port = rte_be_to_cpu_16(udp->dst_port);
+                    }
+                    matched = port_matches(c, src_port, dst_port);
                 }
-                matched = port_matches(c, src_port, dst_port);
+            }
+
+            if (matched)
+                atomic_fetch_add_explicit(&node->rule_hits[0], 1, memory_order_relaxed);
+            int should_pass = (c->action == ACTION_PASS) ? matched : !matched;
+            if (should_pass) {
+                bytes += pkts[i]->pkt_len;
+                pass[n_pass++] = pkts[i];
+            } else {
+                rte_pktmbuf_free(pkts[i]);
+                atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
             }
         }
 
-        if (matched)
-            atomic_fetch_add_explicit(&node->rule_hits[0], 1, memory_order_relaxed);
-        int should_pass = (c->action == ACTION_PASS) ? matched : !matched;
-        if (should_pass) {
-            bytes += pkts[i]->pkt_len;
-            pass[n_pass++] = pkts[i];
-        } else {
-            rte_pktmbuf_free(pkts[i]);
-            atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
+        if (n_pass > 0) {
+            unsigned enq = node_out(node, pass, n_pass);
+            atomic_fetch_add_explicit(&node->pkts_processed,  enq,   memory_order_relaxed);
+            atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
         }
+        total += n;
     }
-
-    if (n_pass > 0) {
-        unsigned enq = node_out(node, pass, n_pass);
-        atomic_fetch_add_explicit(&node->pkts_processed,  enq,   memory_order_relaxed);
-        atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
-    }
-    return n;
+    return total;
 }
 
 static int port_filter_rule_count(void *cfg) { (void)cfg; return 1; }

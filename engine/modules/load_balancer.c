@@ -54,44 +54,47 @@ static inline uint32_t flow_hash(struct rte_mbuf *m) {
 
 static int lb_process(node_desc_t *node) {
     lb_cfg_t *c = node->module_cfg;
-    if (!node->input_rings[0] || !node->input_rings[0]->ring) return 0;
+    int total = 0;
+    for (int ri = 0; ri < node->n_inputs; ri++) {
+        if (!node->input_rings[ri] || !node->input_rings[ri]->ring) continue;
+        struct rte_mbuf *pkts[BURST_SIZE];
+        unsigned n = rte_ring_dequeue_burst(node->input_rings[ri]->ring,
+                                             (void **)pkts, BURST_SIZE, NULL);
+        if (n == 0) continue;
 
-    struct rte_mbuf *pkts[BURST_SIZE];
-    unsigned n = rte_ring_dequeue_burst(node->input_rings[0]->ring,
-                                         (void **)pkts, BURST_SIZE, NULL);
-    if (n == 0) return 0;
+        uint64_t bytes = 0;
+        unsigned processed = 0;
 
-    uint64_t bytes = 0;
-    unsigned processed = 0;
+        for (unsigned i = 0; i < n; i++) {
+            bytes += pkts[i]->pkt_len;
 
-    for (unsigned i = 0; i < n; i++) {
-        bytes += pkts[i]->pkt_len;
+            int out;
+            if (c->mode == LB_RSS) {
+                out = (int)(flow_hash(pkts[i]) % (uint32_t)c->output_count);
+            } else {
+                out = (int)(c->rr_counter % (uint32_t)c->output_count);
+                c->rr_counter++;
+            }
 
-        int out;
-        if (c->mode == LB_RSS) {
-            out = (int)(flow_hash(pkts[i]) % (uint32_t)c->output_count);
-        } else {
-            out = (int)(c->rr_counter % (uint32_t)c->output_count);
-            c->rr_counter++;
-        }
-
-        if (node->output_rings[out] && node->output_rings[out]->ring) {
-            if (rte_ring_enqueue(node->output_rings[out]->ring, pkts[i]) < 0) {
+            if (node->output_rings[out] && node->output_rings[out]->ring) {
+                if (rte_ring_enqueue(node->output_rings[out]->ring, pkts[i]) < 0) {
+                    rte_pktmbuf_free(pkts[i]);
+                    atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
+                    continue;
+                }
+            } else {
                 rte_pktmbuf_free(pkts[i]);
                 atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
                 continue;
             }
-        } else {
-            rte_pktmbuf_free(pkts[i]);
-            atomic_fetch_add_explicit(&node->pkts_dropped, 1, memory_order_relaxed);
-            continue;
+            processed++;
         }
-        processed++;
-    }
 
-    atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
-    atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
-    return n;
+        atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
+        atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
+        total += n;
+    }
+    return total;
 }
 
 module_ops_t load_balancer_ops = {

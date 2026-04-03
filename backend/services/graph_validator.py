@@ -22,15 +22,24 @@ def validate_graph(graph: GraphSchema) -> list[str]:
             if pid not in (0, 1):
                 errors.append(f"Node '{node.id}': port_id must be 0 or 1, got {pid}")
 
-    # Check nic_rx has no inputs, nic_tx has no outputs
-    rx_ids = {n.id for n in g.nodes if n.type == "nic_rx"}
-    tx_ids = {n.id for n in g.nodes if n.type == "nic_tx"}
+    # Source nodes (no inputs) and sink nodes (no outputs)
+    SOURCE_TYPES = {"nic_rx", "pcap_source", "pkt_gen"}
+    SINK_TYPES   = {"nic_tx"}
+
+    source_ids = {n.id for n in g.nodes if n.type in SOURCE_TYPES}
+    sink_ids   = {n.id for n in g.nodes if n.type in SINK_TYPES}
 
     for edge in g.edges:
-        if edge.target in rx_ids:
-            errors.append(f"Node '{edge.target}' is a nic_rx and cannot have inputs")
-        if edge.source in tx_ids:
+        if edge.target in source_ids:
+            node_type = next((n.type for n in g.nodes if n.id == edge.target), "?")
+            errors.append(f"Node '{edge.target}' is a {node_type} (source) and cannot have inputs")
+        if edge.source in sink_ids:
             errors.append(f"Node '{edge.source}' is a nic_tx and cannot have outputs")
+
+    # pcap_source requires a file_path
+    for node in g.nodes:
+        if node.type == "pcap_source" and not node.config.get("file_path", ""):
+            errors.append(f"Node '{node.id}' (pcap_source): file_path is required")
 
     # Check ring name uniqueness
     ring_names: dict[str, str] = {}

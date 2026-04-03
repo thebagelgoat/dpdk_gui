@@ -27,6 +27,8 @@ typedef struct {
     void *(*parse_config)(json_t *cfg_json);
     /* Optional: return the number of rule_hits slots this module uses. NULL = 0. */
     int  (*rule_count)(void *cfg);
+    /* Optional: return a json_t* array/object of extra per-node stats (caller owns ref). NULL = unused. */
+    json_t *(*get_extra_stats)(void *module_cfg);
 } module_ops_t;
 
 /* One entry per module type, indexed by module_type_t */
@@ -48,5 +50,8 @@ extern module_ops_t mac_filter_ops;
 extern module_ops_t pcap_recorder_ops;
 extern module_ops_t counter_ops;
 extern module_ops_t template_ops;
+extern module_ops_t pcap_source_ops;
+extern module_ops_t pkt_gen_ops;
+extern module_ops_t packet_inspector_ops;
 
 #endif /* MODULE_BASE_H */

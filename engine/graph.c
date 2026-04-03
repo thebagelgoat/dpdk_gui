@@ -17,8 +17,11 @@ module_ops_t *module_registry[] = {
     [MOD_PROTOCOL_FILTER]  = &protocol_filter_ops,
     [MOD_MAC_FILTER]       = &mac_filter_ops,
     [MOD_PCAP_RECORDER]    = &pcap_recorder_ops,
-    [MOD_SPEEDOMETER]   = &counter_ops,
-    [MOD_TEMPLATE]      = &template_ops,
+    [MOD_SPEEDOMETER]        = &counter_ops,
+    [MOD_TEMPLATE]           = &template_ops,
+    [MOD_PCAP_SOURCE]        = &pcap_source_ops,
+    [MOD_PKT_GEN]            = &pkt_gen_ops,
+    [MOD_PACKET_INSPECTOR]   = &packet_inspector_ops,
 };
 
 module_type_t module_type_from_string(const char *s) {
@@ -30,8 +33,11 @@ module_type_t module_type_from_string(const char *s) {
     if (!strcmp(s, "protocol_filter"))  return MOD_PROTOCOL_FILTER;
     if (!strcmp(s, "mac_filter"))       return MOD_MAC_FILTER;
     if (!strcmp(s, "pcap_recorder"))    return MOD_PCAP_RECORDER;
-    if (!strcmp(s, "speedometer"))   return MOD_SPEEDOMETER;
-    if (!strcmp(s, "template"))      return MOD_TEMPLATE;
+    if (!strcmp(s, "speedometer"))        return MOD_SPEEDOMETER;
+    if (!strcmp(s, "template"))           return MOD_TEMPLATE;
+    if (!strcmp(s, "pcap_source"))        return MOD_PCAP_SOURCE;
+    if (!strcmp(s, "pkt_gen"))            return MOD_PKT_GEN;
+    if (!strcmp(s, "packet_inspector"))   return MOD_PACKET_INSPECTOR;
     fprintf(stderr, "Unknown module type: %s\n", s);
     return MOD_TEMPLATE;
 }

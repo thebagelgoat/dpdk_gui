@@ -4,7 +4,7 @@
   "graph": {
     "nodes": [
       {
-        "id": "node_1775000316766_0",
+        "id": "node_1775253897080_0",
         "type": "nic_rx",
         "label": "NIC RX",
         "core": 1,
@@ -15,35 +15,64 @@
           "output_mode": "first"
         },
         "position": {
-          "x": 29.5,
-          "y": 83.0
+          "x": -128.0,
+          "y": 53.0
         }
       },
       {
-        "id": "node_1775000320169_1",
-        "type": "speedometer",
-        "label": "Speedometer",
+        "id": "node_1775253900216_1",
+        "type": "port_filter",
+        "label": "Port Filter",
         "core": 1,
         "config": {
-          "label": "speedometer",
-          "reset_on_read": false,
+          "protocol": "both",
+          "ports": [
+            80,
+            443
+          ],
+          "action": "pass",
           "output_mode": "first"
         },
         "position": {
-          "x": 402.60000000000014,
-          "y": 85.37600000000006
+          "x": 133.95200000000017,
+          "y": 32.256
+        }
+      },
+      {
+        "id": "node_1775253908884_2",
+        "type": "packet_inspector",
+        "label": "Inspector",
+        "core": 1,
+        "config": {
+          "sample_every_n": 1,
+          "output_mode": "first"
+        },
+        "position": {
+          "x": 444.16639999999995,
+          "y": 38.416000000000054
         }
       }
     ],
     "edges": [
       {
-        "id": "edge_1775000327818_2",
-        "source": "node_1775000316766_0",
+        "id": "edge_1775253912469_3",
+        "source": "node_1775253897080_0",
         "source_port": 0,
-        "target": "node_1775000320169_1",
+        "target": "node_1775253900216_1",
         "target_port": 0,
         "ring": {
-          "name": "ring_node_1775000316766_0_0_node_1775000320169_1_0",
+          "name": "ring_node_1775253897080_0_0_node_1775253900216_1_0",
+          "size": 1024
+        }
+      },
+      {
+        "id": "edge_1775253914242_4",
+        "source": "node_1775253900216_1",
+        "source_port": 0,
+        "target": "node_1775253908884_2",
+        "target_port": 0,
+        "ring": {
+          "name": "ring_node_1775253900216_1_0_node_1775253908884_2_0",
           "size": 1024
         }
       }

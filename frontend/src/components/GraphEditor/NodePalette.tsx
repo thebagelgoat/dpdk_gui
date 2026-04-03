@@ -6,10 +6,11 @@ interface Props {
 }
 
 const CATEGORIES: { label: string; types: ModuleType[] }[] = [
-  { label: "I / O",     types: ["nic_rx", "nic_tx"] },
-  { label: "Filters",   types: ["ip_filter", "vlan_filter", "port_filter", "protocol_filter", "mac_filter"] },
-  { label: "Recording", types: ["pcap_recorder"] },
-  { label: "Utility",   types: ["speedometer", "template"] },
+  { label: "I / O",           types: ["nic_rx", "nic_tx"] },
+  { label: "Traffic Sources", types: ["pcap_source", "pkt_gen"] },
+  { label: "Filters",         types: ["ip_filter", "vlan_filter", "port_filter", "protocol_filter", "mac_filter"] },
+  { label: "Recording",       types: ["pcap_recorder"] },
+  { label: "Utility",         types: ["speedometer", "packet_inspector", "template"] },
 ];
 
 export default function NodePalette({ onDragStart }: Props) {

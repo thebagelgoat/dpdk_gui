@@ -1,7 +1,8 @@
 export type ModuleType =
   | "nic_rx" | "nic_tx"
   | "ip_filter" | "vlan_filter" | "port_filter" | "protocol_filter" | "mac_filter"
-  | "pcap_recorder" | "speedometer" | "template";
+  | "pcap_recorder" | "speedometer" | "template"
+  | "pcap_source" | "pkt_gen" | "packet_inspector";
 
 export interface RingConfig {
   name: string;
@@ -157,6 +158,38 @@ export const MODULE_DEFS: ModuleDefinition[] = [
     color: "#374151",
     defaultConfig: { user_label: "custom", pass_through: true, output_mode: "first" },
     maxInputs: 1,
+    maxOutputs: 4,
+  },
+  {
+    type: "pcap_source",
+    label: "PCAP Source",
+    description: "Replay packets from a .pcap file into the pipeline",
+    color: "#0891b2",
+    defaultConfig: { file_path: "/tmp/capture.pcap", speed_multiplier: 1.0, loop: false, output_mode: "first" },
+    maxInputs: 0,
+    maxOutputs: 4,
+  },
+  {
+    type: "pkt_gen",
+    label: "Pkt Gen",
+    description: "Generate synthetic Ethernet/IP/UDP or TCP packets",
+    color: "#16a34a",
+    defaultConfig: {
+      rate_pps: 0, src_ip: "10.0.0.1/32", dst_ip: "192.168.1.1/32",
+      src_mac: "02:00:00:00:00:01", dst_mac: "ff:ff:ff:ff:ff:ff", protocol: "udp",
+      src_port_min: 1024, src_port_max: 65535, dst_port_min: 80, dst_port_max: 80,
+      pkt_size: 64, output_mode: "first",
+    },
+    maxInputs: 0,
+    maxOutputs: 4,
+  },
+  {
+    type: "packet_inspector",
+    label: "Inspector",
+    description: "Live packet view — see flowing src/dst IPs, ports, protocol",
+    color: "#0d9488",
+    defaultConfig: { sample_every_n: 1, output_mode: "first" },
+    maxInputs: 4,
     maxOutputs: 4,
   },
 ];

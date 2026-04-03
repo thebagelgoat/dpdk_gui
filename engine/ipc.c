@@ -84,6 +84,19 @@ static json_t *build_stats_response(void) {
                 json_array_append_new(hits, json_integer((json_int_t)ns->rule_hits[j]));
             json_object_set_new(obj, "rule_hits", hits);
         }
+        /* Per-module extra stats (e.g. packet_inspector sample buffer) */
+        if (s_pipeline) {
+            for (int ni = 0; ni < s_pipeline->n_nodes; ni++) {
+                node_desc_t *pn = &s_pipeline->nodes[ni];
+                if (strcmp(pn->id, ns->node_id) != 0) continue;
+                module_ops_t *ops = (module_ops_t *)get_module_ops(pn->type);
+                if (ops && ops->get_extra_stats && pn->module_cfg) {
+                    json_t *extra = ops->get_extra_stats(pn->module_cfg);
+                    if (extra) json_object_set_new(obj, "samples", extra);
+                }
+                break;
+            }
+        }
         json_array_append_new(nodes_arr, obj);
     }
     json_object_set_new(root, "nodes", nodes_arr);

@@ -20,28 +20,29 @@ static void *counter_parse(json_t *cfg) {
 }
 
 static int counter_process(node_desc_t *node) {
-    if (!node->input_rings[0] || !node->input_rings[0]->ring) return 0;
+    int total = 0;
+    for (int ri = 0; ri < node->n_inputs; ri++) {
+        if (!node->input_rings[ri] || !node->input_rings[ri]->ring) continue;
+        struct rte_mbuf *pkts[BURST_SIZE];
+        unsigned n = rte_ring_dequeue_burst(node->input_rings[ri]->ring,
+                                             (void **)pkts, BURST_SIZE, NULL);
+        if (n == 0) continue;
 
-    struct rte_mbuf *pkts[BURST_SIZE];
-    unsigned n = rte_ring_dequeue_burst(node->input_rings[0]->ring,
-                                         (void **)pkts, BURST_SIZE, NULL);
-    if (n == 0) return 0;
+        uint64_t bytes = 0;
+        for (unsigned i = 0; i < n; i++) bytes += pkts[i]->pkt_len;
 
-    uint64_t bytes = 0;
-    for (unsigned i = 0; i < n; i++) bytes += pkts[i]->pkt_len;
-
-    /* Sink mode: free packets without calling node_out() so pkts_dropped is not incremented */
-    if (node->n_outputs == 0) {
-        for (unsigned i = 0; i < n; i++) rte_pktmbuf_free(pkts[i]);
-        atomic_fetch_add_explicit(&node->pkts_processed,  n,     memory_order_relaxed);
-        atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
-        return n;
+        if (node->n_outputs == 0) {
+            for (unsigned i = 0; i < n; i++) rte_pktmbuf_free(pkts[i]);
+            atomic_fetch_add_explicit(&node->pkts_processed,  n,     memory_order_relaxed);
+            atomic_fetch_add_explicit(&node->bytes_processed, bytes, memory_order_relaxed);
+        } else {
+            unsigned processed = node_out(node, pkts, n);
+            atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
+            atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
+        }
+        total += n;
     }
-
-    unsigned processed = node_out(node, pkts, n);
-    atomic_fetch_add_explicit(&node->pkts_processed,  processed, memory_order_relaxed);
-    atomic_fetch_add_explicit(&node->bytes_processed, bytes,     memory_order_relaxed);
-    return n;
+    return total;
 }
 
 module_ops_t counter_ops = {
